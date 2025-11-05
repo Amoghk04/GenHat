@@ -1,0 +1,77 @@
+{
+  "metadata": {
+    "input_documents": [
+      "Breakfast Ideas.pdf",
+      "Dinner Ideas - Mains_1.pdf",
+      "Dinner Ideas - Mains_2.pdf",
+      "Dinner Ideas - Mains_3.pdf",
+      "Dinner Ideas - Sides_1.pdf",
+      "Dinner Ideas - Sides_2.pdf",
+      "Dinner Ideas - Sides_3.pdf",
+      "Dinner Ideas - Sides_4.pdf",
+      "Lunch Ideas.pdf"
+    ],
+    "persona": "Food Contractor",
+    "job_to_be_done": "Prepare a vegetarian buffet-style dinner menu for a corporate gathering, including gluten-free items.",
+    "processing_timestamp": "2025-07-28T08:28:40.731668+00:00"
+  },
+  "extracted_sections": [
+    {
+      "document": "Dinner Ideas - Sides_1.pdf",
+      "section_title": "Banchan",
+      "importance_rank": 1,
+      "page_number": 5
+    },
+    {
+      "document": "Breakfast Ideas.pdf",
+      "section_title": "Instructions:",
+      "importance_rank": 2,
+      "page_number": 2
+    },
+    {
+      "document": "Dinner Ideas - Sides_3.pdf",
+      "section_title": "Hummus",
+      "importance_rank": 3,
+      "page_number": 2
+    },
+    {
+      "document": "Dinner Ideas - Sides_2.pdf",
+      "section_title": "Falafel",
+      "importance_rank": 4,
+      "page_number": 7
+    },
+    {
+      "document": "Lunch Ideas.pdf",
+      "section_title": "Cooked rice for serving",
+      "importance_rank": 5,
+      "page_number": 7
+    }
+  ],
+  "subsection_analysis": [
+    {
+      "document": "Dinner Ideas - Sides_1.pdf",
+      "refined_text": "Banchan \n\u2022 \nIngredients: \no Assorted small side dishes like pickled radish, spinach, bean sprouts, kimchi \n\u2022 \nInstructions: \no Prepare each side dish separately. \no Arrange on small plates. \no Serve as accompaniments to the main meal.",
+      "page_number": 5
+    },
+    {
+      "document": "Breakfast Ideas.pdf",
+      "refined_text": "Instructions: \n\u2022 \nIn a food processor, combine dates, mixed nuts, dried fruit, and honey. \n\u2022 \nProcess until the mixture comes together. \n\u2022 \nPress the mixture into a greased baking dish. \n\u2022 \nRefrigerate for at least 1 hour before cutting into bars. \n\u2022 \nStore in an airtight container.",
+      "page_number": 2
+    },
+    {
+      "document": "Dinner Ideas - Sides_3.pdf",
+      "refined_text": "Hummus \n\u2022 \nIngredients: \no 1 can chickpeas \no 1/4 cup tahini \no 1/4 cup lemon juice \no 2 cloves garlic \no 1/4 cup olive oil \no 1 teaspoon salt \n\u2022 \nInstructions: \no Drain and rinse chickpeas. \no Blend chickpeas, tahini, lemon juice, minced garlic, and salt in a food processor. \no Slowly add olive oil while blending until smooth. \no Serve with a drizzle of olive oil.",
+      "page_number": 2
+    },
+    {
+      "document": "Dinner Ideas - Sides_2.pdf",
+      "refined_text": "Falafel \n\u2022 \nIngredients: \no 1 can chickpeas \no 1 small onion \no 2 cloves garlic \no 1/4 cup parsley \no 1 teaspoon cumin \no 1 teaspoon coriander \no 1 teaspoon salt \no 1/4 cup flour \no Oil for frying \n\u2022 \nInstructions: \no Drain and rinse chickpeas. \no Blend chickpeas, diced onion, minced garlic, chopped parsley, cumin, coriander, \nand salt in a food processor. \no Add flour and mix until combined. \no Form mixture into balls and fry in hot oil until golden. \n\no Drain on paper towels and serve.",
+      "page_number": 7
+    },
+    {
+      "document": "Lunch Ideas.pdf",
+      "refined_text": "Cooked rice for serving",
+      "page_number": 7
+    }
+  ]
+}
