@@ -2,14 +2,19 @@
   "name": "frontend",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "main.js",
   "scripts": {
+    "build": "tsc",
+    "prestart": "npm run build",
     "start": "electron .",
+    "dev": "tsc -w",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "electron": "^39.1.2"
+    "electron": "^39.1.2",
+    "typescript": "^5.3.3",
+    "@types/node": "^20.4.2"
   }
 }
