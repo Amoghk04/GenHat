@@ -1,7 +1,7 @@
 {
-  "name": "frontend",
+  "name": "GenHat",
   "version": "1.0.0",
-  "description": "",
+  "description": "GenHat - AI Document Intelligence Platform",
   "main": "main.js",
   "scripts": {
     "build": "tsc",

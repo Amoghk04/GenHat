@@ -21,81 +21,62 @@
       /* Radial Menu Styles */
       .radial-menu-container {
         position: fixed;
-        right: 0;
-        top: 50%;
-        transform: translateY(-50%);
+        right: 20px;
+        top: 20px;
         z-index: 1000;
       }
 
-      /* Extended hover area to keep menu expanded */
+      /* Extended hover area - starts small (region 1), expands when hovered (region 2) */
       .radial-menu-container::before {
         content: '';
         position: absolute;
         right: 0;
-        top: 50%;
-        transform: translateY(-50%);
-        width: 200px;
-        height: 200px;
+        top: 0;
+        width: 24px;
+        height: 24px;
         pointer-events: all;
+        transition: all 0.3s ease;
+      }
+
+      /* Expand hover area to cover the menu items when container is hovered */
+      .radial-menu-container:hover::before {
+        width: 250px;
+        height: 250px;
       }
 
       .semi-circle-trigger {
         position: absolute;
         right: 0;
-        top: 50%;
-        transform: translateY(-50%);
+        top: 0;
         width: 48px;
-        height: 96px;
+        height: 48px;
         background: transparent;
-        border-radius: 60px 0 0 60px;
         cursor: pointer;
-        transition: all 0.3s ease;
-        box-shadow: none;
         display: flex;
         align-items: center;
         justify-content: center;
         z-index: 10;
       }
 
-      .radial-menu-container:hover .semi-circle-trigger {
-        width: 128px;
-        height: 256px;
-        border-radius: 128px 0 0 128px;
-        background: transparent;
-      }
-
       .semi-circle-trigger img {
-        width: 32px;
-        height: 32px;
-        object-fit: contain;
-        margin-right: 8px;
-        opacity: 0.9;
-        transition: all 0.5s ease;
-        transform: rotate(0deg) scale(2);
-      }
-
-      .radial-menu-container:hover .semi-circle-trigger img {
         width: 48px;
         height: 48px;
-        opacity: 1;
-        transform: rotate(360deg) scale(3);
+        object-fit: contain;
+        opacity: 0.9;
+        transform: scale(3);
       }
 
       .radial-menu {
         position: absolute;
         right: 0;
-        top: 50%;
-        transform: translateY(-50%);
+        top: 0;
         pointer-events: none;
-        opacity: 0;
-        transition: opacity 0.3s ease;
-        width: 80px;
-        height: 80px;
+        width: 50px;
+        height: 50px;
       }
 
       .radial-menu-container:hover .radial-menu {
         pointer-events: all;
-        opacity: 1;
       }
 
       .menu-item {
@@ -112,19 +93,28 @@
         font-size: 11px;
         font-weight: 500;
         cursor: pointer;
-        transition: all 0.3s ease;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
         user-select: none;
+        opacity: 0;
+        transform: translate(0, 0) scale(0);
+        transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+      }
+
+      .radial-menu-container:hover .menu-item {
+        opacity: 1;
+        transform: translate(var(--tx), var(--ty)) scale(1);
       }
 
       .menu-item:hover {
         background: linear-gradient(135deg, #ff6b00 0%, #ff4500 100%);
-        transform: scale(1.1);
+        transform: translate(var(--tx), var(--ty)) scale(1.1);
         box-shadow: 0 6px 16px rgba(255, 140, 0, 0.4);
       }
 
       .menu-item.active {
-        background: linear-gradient(135deg, #ff4500 0%, #cc3700 100%);
+        background: linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%);
+        border: 2px solid #ff6b00;
+        box-shadow: 0 4px 12px rgba(255, 107, 0, 0.6);
       }
 
       .menu-item-icon {
@@ -136,14 +126,247 @@
         font-size: 10px;
       }
 
-      /* Hide scrollbar for file list */
+      /* File card styles */
+      .file-card {
+        background: #2a2a2a;
+        border: 1px solid #3a3a3a;
+        border-radius: 8px;
+        padding: 12px;
+        margin-bottom: 12px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .file-card:hover {
+        border-color: #ff8c00;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(255, 140, 0, 0.2);
+      }
+
+      .file-card.selected {
+        border-color: #ff6b00;
+        background: linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%);
+        box-shadow: 0 4px 12px rgba(255, 107, 0, 0.3);
+      }
+
+      .file-thumbnail {
+        width: 100%;
+        height: 120px;
+        background: #1a1a1a;
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        border: 1px solid #3a3a3a;
+        position: relative;
+      }
+
+      .file-thumbnail canvas {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+
+      .file-number {
+        position: absolute;
+        top: 8px;
+        left: 8px;
+        background: rgba(0, 0, 0, 0.7);
+        color: #ff8c00;
+        border-radius: 50%;
+        width: 24px;
+        height: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        font-weight: 600;
+        border: 1px solid #ff8c00;
+      }
+
+      .delete-btn {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        background: rgba(255, 0, 0, 0.8);
+        color: white;
+        border: none;
+        border-radius: 50%;
+        width: 24px;
+        height: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        font-weight: bold;
+        cursor: pointer;
+        opacity: 0;
+        transition: all 0.2s ease;
+        z-index: 10;
+      }
+
+      .file-card:hover .delete-btn {
+        opacity: 1;
+      }
+
+      .delete-btn:hover {
+        background: rgba(255, 0, 0, 1);
+        transform: scale(1.1);
+      }
+
+      .file-info {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .file-name {
+        color: #e0e0e0;
+        font-size: 13px;
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .file-meta {
+        color: #888;
+        font-size: 11px;
+      }
+
+      #fileList {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
       #fileList::-webkit-scrollbar {
         display: none;
       }
 
-      #fileList {
-        -ms-overflow-style: none;  /* IE and Edge */
-        scrollbar-width: none;  /* Firefox */
+      /* Hide scrollbar for chat container */
+      #chatContainer::-webkit-scrollbar {
+        width: 8px;
+      }
+
+      #chatContainer::-webkit-scrollbar-track {
+        background: #1a1a1a;
+        border-radius: 4px;
+      }
+
+      #chatContainer::-webkit-scrollbar-thumb {
+        background: #ff8c00;
+        border-radius: 4px;
+      }
+
+      #chatContainer::-webkit-scrollbar-thumb:hover {
+        background: #ff6b00;
+      }
+
+      /* Chat input styles */
+      #chatInput:focus {
+        border-color: #ff8c00;
+      }
+
+      #sendButton:hover {
+        background: linear-gradient(135deg, #ff6b00 0%, #ff4500 100%);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(255, 140, 0, 0.4);
+      }
+
+      #sendButton:active {
+        transform: translateY(0);
+      }
+
+      /* Popup Modal Styles */
+      .popup-modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.8);
+        z-index: 2000;
+        justify-content: center;
+        align-items: center;
+        backdrop-filter: blur(4px);
+      }
+
+      .popup-modal.active {
+        display: flex;
+      }
+
+      .popup-content {
+        background: #0d0d0d;
+        border: 2px solid #ff8c00;
+        border-radius: 12px;
+        width: 90%;
+        max-width: 1200px;
+        max-height: 90vh;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 8px 32px rgba(255, 140, 0, 0.3);
+        animation: popupSlideIn 0.3s ease;
+      }
+
+      .popup-content.pdf-viewer {
+        max-width: 95%;
+        max-height: 95vh;
+      }
+
+      @keyframes popupSlideIn {
+        from {
+          transform: scale(0.9) translateY(-20px);
+          opacity: 0;
+        }
+        to {
+          transform: scale(1) translateY(0);
+          opacity: 1;
+        }
+      }
+
+      .popup-header {
+        padding: 20px;
+        border-bottom: 1px solid #2a2a2a;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .popup-body {
+        padding: 20px;
+        overflow-y: auto;
+        flex: 1;
+      }
+
+      .close-btn {
+        background: none;
+        border: none;
+        color: #ff8c00;
+        font-size: 32px;
+        font-weight: 300;
+        cursor: pointer;
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        transition: all 0.2s ease;
+      }
+
+      .close-btn:hover {
+        background: #ff8c00;
+        color: white;
+        transform: rotate(90deg);
       }
 
       /* Platform areas */
@@ -178,45 +401,46 @@
         <ul id="fileList" style="list-style: none; padding: 8px; margin: 0; flex: 1; overflow-y: auto; border: 1px solid #2a2a2a; border-radius: 6px; background: #1a1a1a;"></ul>
       </div>
 
-      <!-- Right Section: Platform Content Area -->
-      <div style="flex: 1; display: flex; flex-direction: column;">
-        <!-- Platform Areas -->
-        <div id="pdfArea" class="platform-area">
-          <div class="platform-title">📄 PDF Viewer</div>
-          <iframe id="pdfViewer" style="width:100%; height: calc(100vh - 80px); border:1px solid #2a2a2a; border-radius: 8px; background: #0d0d0d;" title="PDF Viewer"></iframe>
-        </div>
-
-        <div id="mindmapArea" class="platform-area">
-          <div class="platform-title">🧠 Mind Map</div>
-          <div style="height: calc(100vh - 80px); background: #0d0d0d; border: 2px dashed #2a2a2a; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
-            <div style="text-align: center;">
-              <div style="font-size: 64px; margin-bottom: 16px;">🧠</div>
-              <p style="font-size: 18px; color: #b0b0b0;">Mind map functionality coming soon...</p>
-            </div>
+      <!-- Right Section: Chat Window -->
+      <div style="flex: 1; display: flex; flex-direction: column; gap: 12px;">
+        <!-- Chat Messages Area -->
+        <div id="chatContainer" style="flex: 1; background: #0d0d0d; border: 1px solid #2a2a2a; border-radius: 8px; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;">
+          <div style="text-align: center; color: #666; margin-top: 20px;">
+            <div style="font-size: 48px; margin-bottom: 12px;">💬</div>
+            <p style="font-size: 16px;">Start a conversation...</p>
           </div>
         </div>
 
-        <div id="podcastArea" class="platform-area">
-          <div class="platform-title">🎙️ Podcast</div>
-          <div style="height: calc(100vh - 80px); background: #0d0d0d; border: 2px dashed #2a2a2a; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
-            <div style="text-align: center;">
-              <div style="font-size: 64px; margin-bottom: 16px;">🎙️</div>
-              <p style="font-size: 18px; color: #b0b0b0;">Podcast player coming soon...</p>
-            </div>
-          </div>
-        </div>
-
-        <div id="moreArea" class="platform-area">
-          <div class="platform-title">⚙️ More Options</div>
-          <div style="height: calc(100vh - 80px); background: #0d0d0d; border: 2px dashed #2a2a2a; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
-            <div style="text-align: center;">
-              <div style="font-size: 64px; margin-bottom: 16px;">⚙️</div>
-              <p style="font-size: 18px; color: #b0b0b0;">Additional features coming soon...</p>
-            </div>
-          </div>
+        <!-- Chat Input Area -->
+        <div style="background: #0d0d0d; border: 1px solid #2a2a2a; border-radius: 8px; padding: 12px; display: flex; gap: 8px; align-items: center;">
+          <input 
+            id="chatInput" 
+            type="text" 
+            placeholder="Type your message..." 
+            style="flex: 1; background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 6px; padding: 12px; color: #e0e0e0; font-size: 14px; outline: none;"
+          />
+          <button 
+            id="sendButton" 
+            style="background: linear-gradient(135deg, #ff8c00 0%, #ff6b00 100%); border: none; border-radius: 6px; padding: 12px 24px; color: white; font-weight: 600; cursor: pointer; transition: all 0.2s ease;"
+          >
+            Send
+          </button>
         </div>
       </div>
     </main>
+
+    <!-- Popup Modal -->
+    <div id="popupModal" class="popup-modal">
+      <div class="popup-content">
+        <div class="popup-header">
+          <h2 id="popupTitle" style="margin: 0; color: #ff8c00;">Platform Options</h2>
+          <button id="closePopup" class="close-btn">&times;</button>
+        </div>
+        <div id="popupBody" class="popup-body">
+          <!-- Content will be dynamically inserted -->
+        </div>
+      </div>
+    </div>
 
     <!-- Radial Menu Component -->
     <div class="radial-menu-container">
@@ -224,19 +448,15 @@
         <img src="outline-1-removebg-preview.png" alt="Menu" />
       </div>
       <div class="radial-menu" id="radialMenu">
-        <div class="menu-item" data-platform="pdf" data-index="0">
-          <div class="menu-item-icon">📄</div>
-          <div class="menu-item-label">PDF</div>
-        </div>
-        <div class="menu-item" data-platform="mindmap" data-index="1">
+        <div class="menu-item" data-platform="mindmap" data-index="0">
           <div class="menu-item-icon">🧠</div>
           <div class="menu-item-label">Mind Map</div>
         </div>
-        <div class="menu-item" data-platform="podcast" data-index="2">
+        <div class="menu-item" data-platform="podcast" data-index="1">
           <div class="menu-item-icon">🎙️</div>
           <div class="menu-item-label">Podcast</div>
         </div>
-        <div class="menu-item" data-platform="more" data-index="3">
+        <div class="menu-item" data-platform="more" data-index="2">
           <div class="menu-item-icon">⚙️</div>
           <div class="menu-item-label">More</div>
         </div>

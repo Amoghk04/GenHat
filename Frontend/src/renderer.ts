@@ -1,58 +1,76 @@
 // Renderer (TypeScript)
-// PDF viewer with radial menu component
+// Chat interface with popup modals and PDF viewer
 
 type FileEntry = {
   name: string
   file: File
   url?: string
+  thumbnail?: string
 }
 
-type Platform = 'pdf' | 'mindmap' | 'podcast' | 'more'
+type Platform = 'mindmap' | 'podcast' | 'more'
+
+type ChatMessage = {
+  text: string
+  isUser: boolean
+  timestamp: Date
+}
 
 document.addEventListener('DOMContentLoaded', () => {
   const fileInput = document.getElementById('fileInput') as HTMLInputElement | null
-  const pdfViewer = document.getElementById('pdfViewer') as HTMLIFrameElement | null
   const fileListEl = document.getElementById('fileList') as HTMLUListElement | null
-   
-  // Platform areas
-  const pdfArea = document.getElementById('pdfArea') as HTMLDivElement | null
-  const mindmapArea = document.getElementById('mindmapArea') as HTMLDivElement | null
-  const podcastArea = document.getElementById('podcastArea') as HTMLDivElement | null
-  const moreArea = document.getElementById('moreArea') as HTMLDivElement | null
+  
+  // Chat elements
+  const chatContainer = document.getElementById('chatContainer') as HTMLDivElement | null
+  const chatInput = document.getElementById('chatInput') as HTMLInputElement | null
+  const sendButton = document.getElementById('sendButton') as HTMLButtonElement | null
+  
+  // Popup elements
+  const popupModal = document.getElementById('popupModal') as HTMLDivElement | null
+  const popupTitle = document.getElementById('popupTitle') as HTMLHeadingElement | null
+  const popupBody = document.getElementById('popupBody') as HTMLDivElement | null
+  const closePopup = document.getElementById('closePopup') as HTMLButtonElement | null
   
   // Radial menu
   const radialMenu = document.getElementById('radialMenu') as HTMLDivElement | null
   const menuItems = document.querySelectorAll('.menu-item')
 
 
-  if (!fileInput || !pdfViewer || !fileListEl || !pdfArea || !mindmapArea || !podcastArea || !moreArea || !radialMenu) {
+  if (!fileInput || !fileListEl || !chatContainer || !chatInput || !sendButton || 
+      !popupModal || !popupTitle || !popupBody || !closePopup || !radialMenu) {
     console.warn('Renderer: missing expected DOM elements')
     return
   }
 
-  // Non-null aliases so TypeScript doesn't complain inside nested functions
-  const pdfViewerEl = pdfViewer!
+  // Non-null aliases
   const fileListElm = fileListEl!
+  const chatContainerEl = chatContainer!
+  const chatInputEl = chatInput!
 
   let files: FileEntry[] = []
   let currentPlatform: Platform | null = null
   let selectedFileIndex: number | null = null
+  let chatMessages: ChatMessage[] = []
 
-  // Position menu items in a semi-circle matching the expanded semi-circle size
+  // Position menu items in a bottom-left quarter circle (reversed order)
   const radius = 150
   const itemCount = menuItems.length
-  const angleStep = Math.PI / (itemCount - 1) // Semi-circle (180 degrees)
-  const startAngle = -Math.PI / 2 // Start from top
+  const angleStep = (Math.PI / 2) / (itemCount - 1) // Quarter circle (90 degrees)
+  const startAngle = Math.PI / 2 // Start from bottom (90 degrees)
 
   menuItems.forEach((item, index) => {
-    const angle = startAngle + angleStep * index
+    const reversedIndex = itemCount - 1 - index // Reverse the order
+    const angle = startAngle + angleStep * reversedIndex // Goes from 90° to 180° in reverse
     const x = Math.cos(angle) * radius
     const y = Math.sin(angle) * radius
     
     const menuItem = item as HTMLElement
-    menuItem.style.left = `calc(50% + ${-x}px)`
-    menuItem.style.top = `calc(50% + ${y}px)`
-    menuItem.style.transform = 'translate(-50%, -50%)'
+    // Start at center (0, 0)
+    menuItem.style.left = '0px'
+    menuItem.style.top = '0px'
+    // Set CSS custom properties for the target position
+    menuItem.style.setProperty('--tx', `${x}px`)
+    menuItem.style.setProperty('--ty', `${y}px`)
   })
 
   function clearObjectURLs() {
@@ -64,20 +82,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function switchPlatform(platform: Platform) {
+  // Show popup modal with platform-specific options
+  function showPopup(platform: Platform) {
     currentPlatform = platform
-    
-    // Hide all areas
-    pdfArea!.classList.remove('active')
-    mindmapArea!.classList.remove('active')
-    podcastArea!.classList.remove('active')
-    moreArea!.classList.remove('active')
-    
-    // Show selected area
-    if (platform === 'pdf') pdfArea!.classList.add('active')
-    else if (platform === 'mindmap') mindmapArea!.classList.add('active')
-    else if (platform === 'podcast') podcastArea!.classList.add('active')
-    else if (platform === 'more') moreArea!.classList.add('active')
     
     // Update active menu item styling
     menuItems.forEach(item => {
@@ -90,93 +97,222 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     })
 
-    // Render content based on platform
-    if (platform === 'pdf' && files.length > 0) {
-      renderFileEntry(files[0])
-    } else if (platform !== 'pdf') {
-      pdfViewerEl.src = ''
+    let title = ''
+    let content = ''
+
+    switch (platform) {
+      case 'mindmap':
+        title = '🧠 Mind Map Options'
+        content = `
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            <p style="color: #e0e0e0;">Create a mind map from your documents:</p>
+            <button style="background: linear-gradient(135deg, #ff8c00 0%, #ff6b00 100%); border: none; border-radius: 6px; padding: 10px 20px; color: white; font-weight: 600; cursor: pointer;">
+              Generate Mind Map
+            </button>
+            <button style="background: #2a2a2a; border: 1px solid #ff8c00; border-radius: 6px; padding: 10px 20px; color: #ff8c00; font-weight: 600; cursor: pointer;">
+              Upload Existing Mind Map
+            </button>
+          </div>
+        `
+        break
+      case 'podcast':
+        title = '🎙️ Podcast Options'
+        content = `
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            <p style="color: #e0e0e0;">Generate or play podcasts:</p>
+            <button style="background: linear-gradient(135deg, #ff8c00 0%, #ff6b00 100%); border: none; border-radius: 6px; padding: 10px 20px; color: white; font-weight: 600; cursor: pointer;">
+              Generate Podcast from PDF
+            </button>
+            <button style="background: #2a2a2a; border: 1px solid #ff8c00; border-radius: 6px; padding: 10px 20px; color: #ff8c00; font-weight: 600; cursor: pointer;">
+              Upload Audio File
+            </button>
+          </div>
+        `
+        break
+      case 'more':
+        title = '⚙️ More Options'
+        content = `
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            <button style="background: #2a2a2a; border: 1px solid #ff8c00; border-radius: 6px; padding: 10px 20px; color: #ff8c00; font-weight: 600; cursor: pointer; text-align: left;">
+              ⚙️ Settings
+            </button>
+            <button style="background: #2a2a2a; border: 1px solid #ff8c00; border-radius: 6px; padding: 10px 20px; color: #ff8c00; font-weight: 600; cursor: pointer; text-align: left;">
+              📤 Export Data
+            </button>
+            <button style="background: #2a2a2a; border: 1px solid #ff8c00; border-radius: 6px; padding: 10px 20px; color: #ff8c00; font-weight: 600; cursor: pointer; text-align: left;">
+              ℹ️ About GenHat
+            </button>
+          </div>
+        `
+        break
     }
+
+    popupTitle!.textContent = title
+    popupBody!.innerHTML = content
+    popupModal!.classList.add('active')
   }
 
-  function renderFileEntry(entry: FileEntry) {
-    // Only render when PDF platform is selected
-    if (currentPlatform !== 'pdf') {
-      pdfViewerEl.src = ''
-      return
+  // Open PDF viewer in popup
+  function openPDFViewer(entry: FileEntry) {
+    if (!entry.url) entry.url = URL.createObjectURL(entry.file)
+
+    popupTitle!.textContent = `📄 ${entry.name}`
+    popupBody!.innerHTML = `
+      <iframe 
+        src="${entry.url}" 
+        style="width: 100%; height: calc(90vh - 100px); border: none; border-radius: 8px; background: #000;"
+        title="PDF Viewer"
+      ></iframe>
+    `
+    
+    const popupContent = popupModal!.querySelector('.popup-content') as HTMLElement
+    if (popupContent) {
+      popupContent.classList.add('pdf-viewer')
+    }
+    
+    popupModal!.classList.add('active')
+  }
+
+  // Add message to chat
+  function addChatMessage(text: string, isUser: boolean) {
+    const message: ChatMessage = {
+      text,
+      isUser,
+      timestamp: new Date()
+    }
+    chatMessages.push(message)
+
+    // Clear welcome message if this is first message
+    if (chatMessages.length === 1) {
+      chatContainerEl.innerHTML = ''
     }
 
-    // Ensure we have an object URL
-    if (!entry.url) entry.url = URL.createObjectURL(entry.file)
-    pdfViewerEl.src = entry.url
+    const messageEl = document.createElement('div')
+    messageEl.style.cssText = `
+      display: flex;
+      flex-direction: column;
+      align-items: ${isUser ? 'flex-end' : 'flex-start'};
+      margin-bottom: 12px;
+    `
+
+    const bubble = document.createElement('div')
+    bubble.textContent = text
+    bubble.style.cssText = `
+      background: ${isUser ? 'linear-gradient(135deg, #ff8c00 0%, #ff6b00 100%)' : '#2a2a2a'};
+      color: white;
+      padding: 12px 16px;
+      border-radius: ${isUser ? '16px 16px 4px 16px' : '16px 16px 16px 4px'};
+      max-width: 70%;
+      word-wrap: break-word;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    `
+
+    messageEl.appendChild(bubble)
+    chatContainerEl.appendChild(messageEl)
+    chatContainerEl.scrollTop = chatContainerEl.scrollHeight
+  }
+
+  // Send chat message
+  function sendMessage() {
+    const message = chatInputEl.value.trim()
+    if (!message) return
+
+    addChatMessage(message, true)
+    chatInputEl.value = ''
+
+    // Simulate AI response
+    setTimeout(() => {
+      let response = 'I received your message. How can I assist you further?'
+      
+      if (message.toLowerCase().includes('summarize') || message.toLowerCase().includes('summary')) {
+        response = 'I can help summarize your documents. Please select a PDF from the menu to get started.'
+      } else if (message.toLowerCase().includes('mind map')) {
+        response = 'I can create mind maps from your PDFs. Click the 🧠 Mind Map option to generate one.'
+      } else if (message.toLowerCase().includes('podcast')) {
+        response = 'I can convert your documents into podcasts. Try the 🎙️ Podcast option!'
+      }
+      
+      addChatMessage(response, false)
+    }, 1000)
   }
 
   function rebuildFileList() {
     fileListElm.innerHTML = ''
+    if (files.length === 0) {
+      fileListElm.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">No files uploaded</div>'
+      return
+    }
+
     files.forEach((entry, idx) => {
-      const li = document.createElement('li')
-      li.style.display = 'block'
-      li.style.margin = '8px 0'
-      li.style.padding = '10px 14px'
-      li.style.color = 'white'
-      li.style.borderRadius = '8px'
-      li.style.cursor = 'pointer'
-      li.style.fontSize = '13px'
-      li.style.fontWeight = '500'
-      li.style.transition = 'all 0.2s ease'
-      li.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)'
-      li.style.userSelect = 'none'
-      li.style.whiteSpace = 'nowrap'
-      li.style.overflow = 'hidden'
-      li.style.textOverflow = 'ellipsis'
-      
-      // Set background based on selection state
+      // Create file card container
+      const card = document.createElement('div')
+      card.className = 'file-card'
       if (selectedFileIndex === idx) {
-        li.style.background = 'linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%)'
-        li.style.border = '2px solid #ff6b00'
-      } else {
-        li.style.background = 'linear-gradient(135deg, #ff8c00 0%, #ff6b00 100%)'
-        li.style.border = '2px solid transparent'
+        card.classList.add('selected')
       }
       
-      // Create content with icon
-      const icon = document.createElement('span')
-      icon.textContent = '📄 '
-      icon.style.marginRight = '6px'
+      // Create thumbnail container
+      const thumbnailDiv = document.createElement('div')
+      thumbnailDiv.className = 'file-thumbnail'
+      thumbnailDiv.innerHTML = '<div style="font-size: 48px;">📄</div>' // Placeholder icon
       
-      const fileName = document.createElement('span')
-      fileName.textContent = entry.name
+      // Add numbering
+      const numberSpan = document.createElement('span')
+      numberSpan.className = 'file-number'
+      numberSpan.textContent = (idx + 1).toString()
+      thumbnailDiv.appendChild(numberSpan)
       
-      li.appendChild(icon)
-      li.appendChild(fileName)
-      li.title = entry.name + ` (${(entry.file.size / 1024).toFixed(0)} KB)`
-      
-      li.addEventListener('mouseenter', () => {
-        if (selectedFileIndex !== idx) {
-          li.style.background = 'linear-gradient(135deg, #ff6b00 0%, #ff4500 100%)'
+      // Add delete button
+      const deleteBtn = document.createElement('button')
+      deleteBtn.className = 'delete-btn'
+      deleteBtn.textContent = '×'
+      deleteBtn.title = 'Delete file'
+      deleteBtn.addEventListener('click', (e) => {
+        e.stopPropagation() // Prevent card click
+        // Remove file from array
+        files.splice(idx, 1)
+        // Adjust selected index if necessary
+        if (selectedFileIndex !== null && selectedFileIndex >= idx && selectedFileIndex > 0) {
+          selectedFileIndex--
+        } else if (selectedFileIndex === idx) {
+          selectedFileIndex = null
         }
-        li.style.transform = 'translateX(4px)'
-        li.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.3)'
-      })
-      
-      li.addEventListener('mouseleave', () => {
-        if (selectedFileIndex === idx) {
-          li.style.background = 'linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%)'
-          li.style.border = '2px solid #ff6b00'
-        } else {
-          li.style.background = 'linear-gradient(135deg, #ff8c00 0%, #ff6b00 100%)'
-          li.style.border = '2px solid transparent'
+        // Clear any object URLs for this file
+        if (entry.url) {
+          URL.revokeObjectURL(entry.url)
         }
-        li.style.transform = 'translateX(0)'
-        li.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.2)'
+        rebuildFileList()
+        addChatMessage(`Removed "${entry.name}" from the list.`, false)
       })
+      thumbnailDiv.appendChild(deleteBtn)
       
-      li.addEventListener('click', () => {
+      // Create file info section
+      const infoDiv = document.createElement('div')
+      infoDiv.className = 'file-info'
+      
+      const nameSpan = document.createElement('div')
+      nameSpan.className = 'file-name'
+      nameSpan.textContent = entry.name
+      nameSpan.title = entry.name
+      
+      const metaSpan = document.createElement('div')
+      metaSpan.className = 'file-meta'
+      metaSpan.textContent = `${(entry.file.size / 1024).toFixed(0)} KB • PDF`
+      
+      infoDiv.appendChild(nameSpan)
+      infoDiv.appendChild(metaSpan)
+      
+      card.appendChild(thumbnailDiv)
+      card.appendChild(infoDiv)
+      
+      // Click handler - open PDF viewer popup
+      card.addEventListener('click', () => {
         selectedFileIndex = idx
         rebuildFileList()
-        renderFileEntry(entry)
+        openPDFViewer(entry)
       })
       
-      fileListElm.appendChild(li)
+      fileListElm.appendChild(card)
     })
   }
 
@@ -197,11 +333,9 @@ document.addEventListener('DOMContentLoaded', () => {
     
     rebuildFileList()
 
-    // Auto-render the first newly added file if PDF platform is active
-    if (newFiles.length > 0 && currentPlatform === 'pdf') {
-      selectedFileIndex = files.length - newFiles.length
-      renderFileEntry(files[selectedFileIndex])
-      rebuildFileList()
+    // Show message for uploaded files
+    if (newFiles.length > 0) {
+      addChatMessage(`Uploaded ${newFiles.length} file(s) successfully!`, false)
     }
     
     // Reset the file input so the same file can be added again if needed
@@ -213,13 +347,43 @@ document.addEventListener('DOMContentLoaded', () => {
     item.addEventListener('click', () => {
       const platform = (item as HTMLElement).getAttribute('data-platform') as Platform
       if (platform) {
-        switchPlatform(platform)
+        showPopup(platform)
       }
     })
   })
 
-  // Set default platform to PDF viewer on load
-  switchPlatform('pdf')
+  // Chat send button
+  sendButton!.addEventListener('click', sendMessage)
+
+  // Chat input enter key
+  chatInputEl.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+      sendMessage()
+    }
+  })
+
+  // Close popup
+  closePopup!.addEventListener('click', () => {
+    const popupContent = popupModal!.querySelector('.popup-content') as HTMLElement
+    if (popupContent) {
+      popupContent.classList.remove('pdf-viewer')
+    }
+    popupModal!.classList.remove('active')
+  })
+
+  // Close popup on background click
+  popupModal!.addEventListener('click', (e) => {
+    if (e.target === popupModal) {
+      const popupContent = popupModal!.querySelector('.popup-content') as HTMLElement
+      if (popupContent) {
+        popupContent.classList.remove('pdf-viewer')
+      }
+      popupModal!.classList.remove('active')
+    }
+  })
+
+  // Initialize with welcome message
+  addChatMessage('Welcome to GenHat! 👋 Upload PDFs from the sidebar and use the menu to explore different features.', false)
 
   // Clean up object URLs when the page unloads
   window.addEventListener('beforeunload', () => {
