@@ -36,6 +36,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let files: FileEntry[] = []
   let currentPlatform: Platform | null = null
+  let selectedFileIndex: number | null = null
 
   // Position menu items in a semi-circle matching the expanded semi-circle size
   const radius = 150
@@ -113,11 +114,64 @@ document.addEventListener('DOMContentLoaded', () => {
     fileListElm.innerHTML = ''
     files.forEach((entry, idx) => {
       const li = document.createElement('li')
-      li.style.padding = '8px'
-      li.style.borderBottom = '1px solid #f0f0f0'
+      li.style.display = 'block'
+      li.style.margin = '8px 0'
+      li.style.padding = '10px 14px'
+      li.style.color = 'white'
+      li.style.borderRadius = '8px'
       li.style.cursor = 'pointer'
-      li.textContent = entry.name + ` (${(entry.file.size / 1024).toFixed(0)} KB)`
-      li.addEventListener('click', () => renderFileEntry(entry))
+      li.style.fontSize = '13px'
+      li.style.fontWeight = '500'
+      li.style.transition = 'all 0.2s ease'
+      li.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)'
+      li.style.userSelect = 'none'
+      li.style.whiteSpace = 'nowrap'
+      li.style.overflow = 'hidden'
+      li.style.textOverflow = 'ellipsis'
+      
+      // Set background based on selection state
+      if (selectedFileIndex === idx) {
+        li.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+      } else {
+        li.style.background = 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)'
+      }
+      
+      // Create content with icon
+      const icon = document.createElement('span')
+      icon.textContent = '📄 '
+      icon.style.marginRight = '6px'
+      
+      const fileName = document.createElement('span')
+      fileName.textContent = entry.name
+      
+      li.appendChild(icon)
+      li.appendChild(fileName)
+      li.title = entry.name + ` (${(entry.file.size / 1024).toFixed(0)} KB)`
+      
+      li.addEventListener('mouseenter', () => {
+        if (selectedFileIndex !== idx) {
+          li.style.background = 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)'
+        }
+        li.style.transform = 'translateX(4px)'
+        li.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.15)'
+      })
+      
+      li.addEventListener('mouseleave', () => {
+        if (selectedFileIndex === idx) {
+          li.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+        } else {
+          li.style.background = 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)'
+        }
+        li.style.transform = 'translateX(0)'
+        li.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)'
+      })
+      
+      li.addEventListener('click', () => {
+        selectedFileIndex = idx
+        rebuildFileList()
+        renderFileEntry(entry)
+      })
+      
       fileListElm.appendChild(li)
     })
   }
@@ -126,16 +180,28 @@ document.addEventListener('DOMContentLoaded', () => {
     const selected = fileInput.files
     if (!selected || selected.length === 0) return
 
-    // Clear previous object URLs to avoid leaks
-    clearObjectURLs()
-
-    files = Array.from(selected).map(f => ({ name: f.name, file: f }))
+    // Add new files to existing list instead of replacing
+    const newFiles = Array.from(selected).map(f => ({ name: f.name, file: f }))
+    
+    // Filter out duplicates by name
+    newFiles.forEach(newFile => {
+      const exists = files.some(f => f.name === newFile.name)
+      if (!exists) {
+        files.push(newFile)
+      }
+    })
+    
     rebuildFileList()
 
-    // Auto-render the first file if PDF platform is active
-    if (files.length > 0 && currentPlatform === 'pdf') {
-      renderFileEntry(files[0])
+    // Auto-render the first newly added file if PDF platform is active
+    if (newFiles.length > 0 && currentPlatform === 'pdf') {
+      selectedFileIndex = files.length - newFiles.length
+      renderFileEntry(files[selectedFileIndex])
+      rebuildFileList()
     }
+    
+    // Reset the file input so the same file can be added again if needed
+    fileInput.value = ''
   })
 
   // Radial menu item click handlers
