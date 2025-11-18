@@ -131,9 +131,11 @@ document.addEventListener('DOMContentLoaded', () => {
       
       // Set background based on selection state
       if (selectedFileIndex === idx) {
-        li.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+        li.style.background = 'linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%)'
+        li.style.border = '2px solid #ff6b00'
       } else {
-        li.style.background = 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)'
+        li.style.background = 'linear-gradient(135deg, #ff8c00 0%, #ff6b00 100%)'
+        li.style.border = '2px solid transparent'
       }
       
       // Create content with icon
@@ -150,20 +152,22 @@ document.addEventListener('DOMContentLoaded', () => {
       
       li.addEventListener('mouseenter', () => {
         if (selectedFileIndex !== idx) {
-          li.style.background = 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)'
+          li.style.background = 'linear-gradient(135deg, #ff6b00 0%, #ff4500 100%)'
         }
         li.style.transform = 'translateX(4px)'
-        li.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.15)'
+        li.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.3)'
       })
       
       li.addEventListener('mouseleave', () => {
         if (selectedFileIndex === idx) {
-          li.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+          li.style.background = 'linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%)'
+          li.style.border = '2px solid #ff6b00'
         } else {
-          li.style.background = 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)'
+          li.style.background = 'linear-gradient(135deg, #ff8c00 0%, #ff6b00 100%)'
+          li.style.border = '2px solid transparent'
         }
         li.style.transform = 'translateX(0)'
-        li.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)'
+        li.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.2)'
       })
       
       li.addEventListener('click', () => {
