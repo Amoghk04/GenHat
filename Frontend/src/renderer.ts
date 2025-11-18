@@ -38,7 +38,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let currentPlatform: Platform | null = null
 
   // Position menu items in a semi-circle matching the expanded semi-circle size
-  const radius = 100
+  const radius = 150
   const itemCount = menuItems.length
   const angleStep = Math.PI / (itemCount - 1) // Semi-circle (180 degrees)
   const startAngle = -Math.PI / 2 // Start from top

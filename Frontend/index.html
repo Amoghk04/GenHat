@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>GenHat — Frontend (Electron)</title>
+    
     <style>
       body { 
         font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; 
@@ -31,8 +31,8 @@
         right: 0;
         top: 50%;
         transform: translateY(-50%);
-        width: 250px;
-        height: 300px;
+        width: 200px;
+        height: 200px;
         pointer-events: all;
       }
 
@@ -78,14 +78,14 @@
 
       .radial-menu {
         position: absolute;
-        right: 128px;
+        right: 0;
         top: 50%;
         transform: translateY(-50%);
         pointer-events: none;
         opacity: 0;
         transition: opacity 0.3s ease;
-        width: 200px;
-        height: 200px;
+        width: 80px;
+        height: 80px;
       }
 
       .radial-menu-container:hover .radial-menu {
@@ -150,14 +150,6 @@
     </style>
   </head>
   <body>
-    <header>
-      <h1>GenHat — Frontend</h1>
-      <small>Basic Electron shell</small>
-    </header>
-
-    <main>
-      <p>This is a TypeScript-backed renderer. Choose one or more PDFs, hover over the menu on the right, then click a platform.</p>
-
       <div style="display:flex; gap:12px; align-items:center; margin-bottom: 16px;">
         <div>
           <label for="fileInput">Upload PDFs</label><br />

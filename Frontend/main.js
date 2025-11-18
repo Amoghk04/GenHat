@@ -20,8 +20,6 @@ function createWindow() {
   win.maximize()
 
   win.loadFile(path.join(__dirname, 'index.html'))
-  // Open devtools for initial development. Remove in production.
-  win.webContents.openDevTools()
 }
 
 app.whenReady().then(createWindow)
