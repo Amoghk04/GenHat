@@ -46,11 +46,11 @@
         transform: translateY(-50%);
         width: 48px;
         height: 96px;
-        background: linear-gradient(135deg, #ff8c00 0%, #ff6b00 100%);
+        background: transparent;
         border-radius: 60px 0 0 60px;
         cursor: pointer;
         transition: all 0.3s ease;
-        box-shadow: -2px 0 8px rgba(0, 0, 0, 0.4);
+        box-shadow: none;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -61,22 +61,24 @@
         width: 128px;
         height: 256px;
         border-radius: 128px 0 0 128px;
-        background: linear-gradient(135deg, #ff6b00 0%, #ff4500 100%);
+        background: transparent;
       }
 
-      .semi-circle-trigger .dots {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        margin-right: 12px;
+      .semi-circle-trigger img {
+        width: 32px;
+        height: 32px;
+        object-fit: contain;
+        margin-right: 8px;
+        opacity: 0.9;
+        transition: all 0.5s ease;
+        transform: rotate(0deg) scale(2);
       }
 
-      .semi-circle-trigger .dot {
-        width: 4px;
-        height: 4px;
-        background: white;
-        border-radius: 50%;
-        opacity: 0.8;
+      .radial-menu-container:hover .semi-circle-trigger img {
+        width: 48px;
+        height: 48px;
+        opacity: 1;
+        transform: rotate(360deg) scale(3);
       }
 
       .radial-menu {
@@ -219,11 +221,7 @@
     <!-- Radial Menu Component -->
     <div class="radial-menu-container">
       <div class="semi-circle-trigger">
-        <div class="dots">
-          <div class="dot"></div>
-          <div class="dot"></div>
-          <div class="dot"></div>
-        </div>
+        <img src="outline-1-removebg-preview.png" alt="Menu" />
       </div>
       <div class="radial-menu" id="radialMenu">
         <div class="menu-item" data-platform="pdf" data-index="0">
