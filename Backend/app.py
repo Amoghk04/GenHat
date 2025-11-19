@@ -26,10 +26,52 @@ from datetime import datetime, timezone
 import re
 import shutil
 from dotenv import load_dotenv
+import platform
+import logging
 
 load_dotenv()
 
 app = FastAPI()
+
+# --- OS-specific temp directory configuration ---
+def get_os_temp_dir() -> Path:
+    """Get OS-appropriate temporary directory"""
+    system = platform.system()
+    if system == "Linux":
+        temp_base = Path("/var/tmp")
+    elif system == "Windows":
+        temp_base = Path(os.environ.get("TEMP", tempfile.gettempdir()))
+    elif system == "Darwin":  # macOS
+        temp_base = Path(tempfile.gettempdir())
+    else:
+        temp_base = Path(tempfile.gettempdir())
+    
+    # Create GenHat subdirectory in temp
+    genhat_temp = temp_base / "genhat"
+    genhat_temp.mkdir(parents=True, exist_ok=True)
+    return genhat_temp
+
+# Configure logging to temp directory
+TEMP_DIR = get_os_temp_dir()
+LOG_DIR = TEMP_DIR / "logs"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+LOG_FILE = LOG_DIR / f"genhat_{datetime.now().strftime('%Y%m%d')}.log"
+
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(LOG_FILE),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
+logger.info(f"🚀 GenHat Backend starting...")
+logger.info(f"📁 OS: {platform.system()}")
+logger.info(f"📁 Temp directory: {TEMP_DIR}")
+logger.info(f"📝 Log file: {LOG_FILE}")
 
 # --- Frontend (SPA) static serving integration ---
 from fastapi.staticfiles import StaticFiles
@@ -62,9 +104,11 @@ NO_CONTENT = 'No content'
 pdf_cache: Dict[str, Any] = {}
 executor = ThreadPoolExecutor(max_workers=4)
 
-# Persistence directories
-BASE_DATA_DIR = Path(os.environ.get("DOCUMINT_DATA_DIR", "./data/projects")).resolve()
+# Persistence directories - now in temp directory
+BASE_DATA_DIR = Path(os.environ.get("DOCUMINT_DATA_DIR", str(TEMP_DIR / "projects"))).resolve()
 BASE_DATA_DIR.mkdir(parents=True, exist_ok=True)
+logger.info(f"📦 Data directory: {BASE_DATA_DIR}")
+
 # New insight path helpers
 INSIGHTS_FOLDER_NAME = "insights"
 
@@ -73,10 +117,6 @@ def _insights_dir(project_name: str) -> Path:
 
 def _insight_dir(project_name: str, insight_id: str) -> Path:
     return _insights_dir(project_name) / insight_id
-
-# Persistence directories
-BASE_DATA_DIR = Path(os.environ.get("DOCUMINT_DATA_DIR", "./data/projects")).resolve()
-BASE_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 META_FILENAME = "meta.json"
 CHUNKS_FILENAME = "chunks.json"
@@ -163,10 +203,12 @@ async def extract_pdf_outline(file: UploadFile = File(...)):
     
     temp_file_path = None
     try:
-        # Create unique temporary file path
-        temp_dir = tempfile.gettempdir()
+        # Create unique temporary file path in OS temp directory
+        temp_upload_dir = TEMP_DIR / "uploads"
+        temp_upload_dir.mkdir(parents=True, exist_ok=True)
         unique_filename = f"pdf_{uuid.uuid4().hex}.pdf"
-        temp_file_path = os.path.join(temp_dir, unique_filename)
+        temp_file_path = str(temp_upload_dir / unique_filename)
+        logger.info(f"📄 Temporary file: {temp_file_path}")
         
         # Read uploaded file content
         content = await file.read()
@@ -215,7 +257,7 @@ async def cache_pdfs(project_name: str = Form(""), files: List[UploadFile] = Fil
 
         new_pdf_paths: List[str] = []
         new_files_meta: List[Dict[str, Any]] = []
-        temp_dir: Optional[str] = None
+        temp_dir: Optional[Path] = None
 
         # Collect truly new PDFs
         for file in files:
@@ -226,8 +268,11 @@ async def cache_pdfs(project_name: str = Form(""), files: List[UploadFile] = Fil
             if file_hash in existing_hashes:
                 continue  # already processed
             if temp_dir is None:
-                temp_dir = tempfile.mkdtemp()
-            file_path = os.path.join(temp_dir, file.filename)
+                # Create temp directory in OS-appropriate location
+                temp_dir = TEMP_DIR / "uploads" / f"batch_{uuid.uuid4().hex[:8]}"
+                temp_dir.mkdir(parents=True, exist_ok=True)
+                logger.info(f"📁 Created temp directory: {temp_dir}")
+            file_path = str(temp_dir / file.filename)
             async with aiofiles.open(file_path, 'wb') as f:
                 await f.write(content)
             new_pdf_paths.append(file_path)
@@ -236,6 +281,7 @@ async def cache_pdfs(project_name: str = Form(""), files: List[UploadFile] = Fil
                 "hash": file_hash,
                 "size": len(content)
             })
+            logger.info(f"📄 Cached PDF: {file.filename} ({len(content)} bytes)")
 
         cache_key = str(uuid.uuid4())
         pdf_cache[cache_key] = {"processing": True, "project_name": safe_name, "chunks": existing_chunks, "pdf_files": [f["name"] for f in existing_files_meta]}
@@ -308,56 +354,44 @@ async def cache_pdfs(project_name: str = Form(""), files: List[UploadFile] = Fil
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error caching PDFs: {str(e)}")
 
-def process_pdfs_background(cache_key: str, pdf_files: List[str], temp_dir: Optional[str], project_name: str, existing_chunks: List[Dict[str, Any]], existing_meta: Dict[str, Any], new_files_meta: List[Dict[str, Any]]):
-    """Synchronous processing run in background task."""
+def process_single_pdf(pdf_file: str, project_name: str) -> List[Dict[str, Any]]:
+    """Process a single PDF file and return its chunks."""
     try:
         extractor = PDFHeadingExtractor()
+        logger.info(f"🔍 Processing {os.path.basename(pdf_file)} (project: {project_name})")
+        headings = extractor.extract_headings(pdf_file)
+        chunks = extract_chunks_with_headings(pdf_file, headings)
+        logger.info(f"✅ Extracted {len(chunks)} chunks from {os.path.basename(pdf_file)}")
+        return chunks
+    except Exception as e:
+        logger.error(f"❌ Error processing {pdf_file}: {e}")
+        return []
+
+def process_pdfs_background(cache_key: str, pdf_files: List[str], temp_dir: Optional[Path], project_name: str, existing_chunks: List[Dict[str, Any]], existing_meta: Dict[str, Any], new_files_meta: List[Dict[str, Any]]):
+    """Synchronous processing run in background task with parallel PDF extraction."""
+    try:
+        logger.info(f"🔄 Processing {len(pdf_files)} PDFs in parallel for project '{project_name}'")
         all_chunks = list(existing_chunks)
 
-        # Initialize progress tracking for each file
-        total_files = len(pdf_files)
-        file_progress = {}
-        for i, pdf_file in enumerate(pdf_files):
-            file_name = os.path.basename(pdf_file)
-            file_progress[file_name] = {
-                "index": i,
-                "progress": 0,
-                "status": "pending",
-                "total_files": total_files
+        # Process PDFs in parallel using ThreadPoolExecutor
+        max_workers = min(len(pdf_files), os.cpu_count() or 4)  # Use available CPUs, max 4 by default
+        logger.info(f"🚀 Using {max_workers} parallel workers for PDF extraction")
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all PDF processing tasks
+            future_to_pdf = {
+                executor.submit(process_single_pdf, pdf_file, project_name): pdf_file 
+                for pdf_file in pdf_files
             }
-
-        # Update cache with initial progress
-        if cache_key in pdf_cache:
-            pdf_cache[cache_key]["file_progress"] = file_progress
-            pdf_cache[cache_key]["processing"] = True
-
-        for i, pdf_file in enumerate(pdf_files):
-            file_name = os.path.basename(pdf_file)
-            try:
-                print(f"🔍 Processing {file_name} (project: {project_name})")
-                file_progress[file_name]["status"] = "processing"
-
-                # Extract headings (simulate progress steps)
-                headings = extractor.extract_headings(pdf_file)
-                file_progress[file_name]["progress"] = 50
-
-                # Extract chunks
-                chunks = extract_chunks_with_headings(pdf_file, headings)
-                all_chunks.extend(chunks)
-                file_progress[file_name]["progress"] = 100
-                file_progress[file_name]["status"] = "completed"
-
-                # Update cache with current progress
-                if cache_key in pdf_cache:
-                    pdf_cache[cache_key]["file_progress"] = file_progress
-
-            except Exception as e:
-                print(f"❌ Error processing {pdf_file}: {e}")
-                file_progress[file_name]["status"] = "error"
-                file_progress[file_name]["error"] = str(e)
-                # Update cache with error status
-                if cache_key in pdf_cache:
-                    pdf_cache[cache_key]["file_progress"] = file_progress
+            
+            # Collect results as they complete
+            for future in future_to_pdf:
+                pdf_file = future_to_pdf[future]
+                try:
+                    chunks = future.result()
+                    all_chunks.extend(chunks)
+                except Exception as e:
+                    logger.error(f"❌ Error processing {pdf_file}: {e}")
 
         if not all_chunks:
             # Nothing extracted – store placeholder
@@ -394,9 +428,9 @@ def process_pdfs_background(cache_key: str, pdf_files: List[str], temp_dir: Opti
             "file_progress": file_progress,
             "processing": False
         }
-        print(f"✅ Cached {len(all_chunks)} total chunks for project '{project_name}' (cache key {cache_key})")
+        logger.info(f"✅ Cached {len(all_chunks)} total chunks for project '{project_name}' (cache key {cache_key})")
     except Exception as e:
-        print(f"❌ Error processing PDFs for project {project_name}: {e}")
+        logger.error(f"❌ Error processing PDFs for project {project_name}: {e}")
         # Mark all remaining files as error
         for file_name in file_progress:
             if file_progress[file_name]["status"] != "completed":
@@ -408,9 +442,10 @@ def process_pdfs_background(cache_key: str, pdf_files: List[str], temp_dir: Opti
     finally:
         if temp_dir:
             try:
+                logger.info(f"🗑️ Cleaning up temp directory: {temp_dir}")
                 shutil.rmtree(temp_dir)
-            except Exception:
-                pass
+            except Exception as cleanup_error:
+                logger.warning(f"⚠️ Failed to cleanup temp directory: {cleanup_error}")
 
 @app.post("/append-pdf")
 async def append_pdf(
@@ -447,11 +482,13 @@ async def append_pdf(
                 "reused": True
             }
             return {"cache_key": cache_key, "message": "PDF already present; reused existing cache", "reused": True}
-        # Write temp file
-        temp_dir = tempfile.mkdtemp()
-        temp_path = os.path.join(temp_dir, file.filename)
+        # Write temp file to OS temp directory
+        temp_dir = TEMP_DIR / "uploads" / f"append_{uuid.uuid4().hex[:8]}"
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        temp_path = str(temp_dir / file.filename)
         async with aiofiles.open(temp_path, 'wb') as f:
             await f.write(content)
+        logger.info(f"📄 Appending PDF: {file.filename} to temp: {temp_path}")
         cache_key = str(uuid.uuid4())
         pdf_cache[cache_key] = {"processing": True, "project_name": safe_name, "chunks": existing_chunks, "pdf_files": [f.get("name") for f in meta.get("files", [])]}
         new_files_meta = [{"name": file.filename, "hash": file_hash, "size": len(content)}]
@@ -467,6 +504,102 @@ async def append_pdf(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error appending PDF: {e}")
+
+@app.post("/remove-pdf")
+async def remove_pdf(
+    project_name: str = Form(...),
+    filename: str = Form(...)
+):
+    """Remove a PDF from an existing project and rebuild embeddings without that PDF.
+    Returns a new cache_key whose status can be polled at /cache-status/{cache_key}."""
+    try:
+        safe_name = _safe_project_name(project_name)
+        meta = load_project_meta(safe_name)
+        if not meta:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        existing_files = meta.get("files", [])
+        existing_chunks = load_project_chunks(safe_name)
+        
+        # Find and remove the file from metadata
+        file_to_remove = None
+        new_files_meta = []
+        for f in existing_files:
+            if f.get("name") == filename:
+                file_to_remove = f
+            else:
+                new_files_meta.append(f)
+        
+        if not file_to_remove:
+            raise HTTPException(status_code=404, detail=f"PDF '{filename}' not found in project")
+        
+        # Filter out chunks that belong to the removed PDF
+        filtered_chunks = [
+            chunk for chunk in existing_chunks 
+            if chunk.get('pdf_name') != filename
+        ]
+        
+        print(f"🗑️ Removing '{filename}' from project '{safe_name}'")
+        print(f"📊 Chunks before: {len(existing_chunks)}, after: {len(filtered_chunks)}")
+        
+        # Create new cache key for the updated project
+        cache_key = str(uuid.uuid4())
+        
+        if not filtered_chunks:
+            # No chunks left, save empty state
+            save_project_state(safe_name, {**meta, "files": new_files_meta, "domain": "general"}, [])
+            pdf_cache[cache_key] = {
+                "chunks": [],
+                "domain": "general",
+                "pdf_files": [f["name"] for f in new_files_meta],
+                "project_name": safe_name,
+                "empty": True
+            }
+            return {
+                "cache_key": cache_key,
+                "message": f"Removed '{filename}'. No PDFs remaining in project.",
+                "removed": True,
+                "remaining_pdfs": 0
+            }
+        
+        # Rebuild the index with remaining chunks
+        detected_domain = detect_domain("general", "general")
+        try:
+            retriever = build_hybrid_index(filtered_chunks, domain=detected_domain)
+            print(f"✅ Rebuilt index with {len(filtered_chunks)} chunks")
+        except Exception as e:
+            print(f"❌ Index rebuild failed: {e}")
+            retriever = None
+        
+        # Save updated project state
+        save_project_state(safe_name, {**meta, "files": new_files_meta, "domain": detected_domain}, filtered_chunks)
+        
+        # Update cache
+        pdf_cache[cache_key] = {
+            "retriever": retriever,
+            "chunks": filtered_chunks,
+            "domain": detected_domain,
+            "pdf_files": [f["name"] for f in new_files_meta],
+            "project_name": safe_name,
+            "removed_file": filename,
+            "index_error": retriever is None
+        }
+        
+        return {
+            "cache_key": cache_key,
+            "message": f"Removed '{filename}' and rebuilt embeddings successfully",
+            "removed": True,
+            "remaining_pdfs": len(new_files_meta),
+            "remaining_chunks": len(filtered_chunks)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error removing PDF: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error removing PDF: {e}")
 
 @app.post("/query-pdfs")
 async def query_pdfs(
@@ -1254,6 +1387,38 @@ async def delete_project_insight(project_name: str, insight_id: str):
         raise HTTPException(status_code=500, detail=f"Error deleting insight: {e}")
 
 # Frontend routes - serve index.html for client-side routing
+@app.on_event("startup")
+async def startup_event():
+    """Log configuration on startup"""
+    logger.info("=" * 60)
+    logger.info("🎩 GenHat Backend - Configuration")
+    logger.info("=" * 60)
+    logger.info(f"OS: {platform.system()} {platform.release()}")
+    logger.info(f"Python: {sys.version.split()[0]}")
+    logger.info(f"Temp Directory: {TEMP_DIR}")
+    logger.info(f"Log Directory: {LOG_DIR}")
+    logger.info(f"Data Directory: {BASE_DATA_DIR}")
+    logger.info(f"Upload Directory: {TEMP_DIR / 'uploads'}")
+    logger.info("=" * 60)
+    
+    # Create necessary directories
+    (TEMP_DIR / "uploads").mkdir(parents=True, exist_ok=True)
+    logger.info("✅ All directories initialized")
+
+@app.get("/api/info")
+async def get_system_info():
+    """Get system and configuration information"""
+    return {
+        "os": platform.system(),
+        "os_version": platform.release(),
+        "python_version": sys.version.split()[0],
+        "temp_dir": str(TEMP_DIR),
+        "log_dir": str(LOG_DIR),
+        "data_dir": str(BASE_DATA_DIR),
+        "upload_dir": str(TEMP_DIR / "uploads"),
+        "log_file": str(LOG_FILE)
+    }
+
 @app.get("/projects")
 @app.get("/arena") 
 @app.get("/mindmap")
