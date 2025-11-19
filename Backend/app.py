@@ -373,6 +373,23 @@ def process_pdfs_background(cache_key: str, pdf_files: List[str], temp_dir: Opti
         logger.info(f"🔄 Processing {len(pdf_files)} PDFs in parallel for project '{project_name}'")
         all_chunks = list(existing_chunks)
 
+        # Initialize progress tracking for each file
+        total_files = len(pdf_files)
+        file_progress = {}
+        for i, pdf_file in enumerate(pdf_files):
+            file_name = os.path.basename(pdf_file)
+            file_progress[file_name] = {
+                "index": i,
+                "progress": 0,
+                "status": "pending",
+                "total_files": total_files
+            }
+
+        # Update cache with initial progress
+        if cache_key in pdf_cache:
+            pdf_cache[cache_key]["file_progress"] = file_progress
+            pdf_cache[cache_key]["processing"] = True
+
         # Process PDFs in parallel using ThreadPoolExecutor
         max_workers = min(len(pdf_files), os.cpu_count() or 4)  # Use available CPUs, max 4 by default
         logger.info(f"🚀 Using {max_workers} parallel workers for PDF extraction")
@@ -387,11 +404,30 @@ def process_pdfs_background(cache_key: str, pdf_files: List[str], temp_dir: Opti
             # Collect results as they complete
             for future in future_to_pdf:
                 pdf_file = future_to_pdf[future]
+                file_name = os.path.basename(pdf_file)
                 try:
+                    # Update progress to processing
+                    file_progress[file_name]["status"] = "processing"
+                    file_progress[file_name]["progress"] = 25
+                    
                     chunks = future.result()
                     all_chunks.extend(chunks)
+                    
+                    # Update progress to completed
+                    file_progress[file_name]["progress"] = 100
+                    file_progress[file_name]["status"] = "completed"
+                    
+                    # Update cache with current progress
+                    if cache_key in pdf_cache:
+                        pdf_cache[cache_key]["file_progress"] = file_progress
+                    
                 except Exception as e:
                     logger.error(f"❌ Error processing {pdf_file}: {e}")
+                    file_progress[file_name]["status"] = "error"
+                    file_progress[file_name]["error"] = str(e)
+                    # Update cache with error status
+                    if cache_key in pdf_cache:
+                        pdf_cache[cache_key]["file_progress"] = file_progress
 
         if not all_chunks:
             # Nothing extracted – store placeholder

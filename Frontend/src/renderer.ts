@@ -628,7 +628,7 @@ function initializeApp() {
             appState.cacheKey = removeResponse.cache_key
             
             // Wait for the new cache to be ready
-            await waitForCacheReady(appState.cacheKey)
+            await waitForCacheReadyWithProgress(appState.cacheKey)
             
             if (removeResponse.remaining_pdfs === 0) {
               addChatMessage('⚠️ All PDFs removed. Upload new files to continue.', false)
