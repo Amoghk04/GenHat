@@ -18,6 +18,14 @@ export interface CacheStatusResponse {
   pdf_files?: string[]
   domain?: string
   project_name?: string
+  file_progress?: Record<string, {
+    index: number
+    progress: number
+    status: 'pending' | 'processing' | 'completed' | 'error'
+    total_files: number
+    error?: string
+  }>
+  processing?: boolean
 }
 
 export interface QueryPDFsResponse {
@@ -191,15 +199,21 @@ export async function analyzeChunksWithGemini(
 }
 
 /**
- * Poll cache status until ready
+ * Poll cache status until ready, with progress callback
  */
-export async function waitForCacheReady(
+export async function waitForCacheReadyWithProgress(
   cacheKey: string,
-  maxAttempts: number = 30,
+  onProgress?: (status: CacheStatusResponse) => void,
+  maxAttempts: number = 60,
   intervalMs: number = 1000
 ): Promise<CacheStatusResponse> {
   for (let i = 0; i < maxAttempts; i++) {
     const status = await checkCacheStatus(cacheKey)
+    
+    // Call progress callback if provided
+    if (onProgress) {
+      onProgress(status)
+    }
     
     if (status.ready) {
       return status

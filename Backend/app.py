@@ -314,14 +314,50 @@ def process_pdfs_background(cache_key: str, pdf_files: List[str], temp_dir: Opti
         extractor = PDFHeadingExtractor()
         all_chunks = list(existing_chunks)
 
-        for pdf_file in pdf_files:
+        # Initialize progress tracking for each file
+        total_files = len(pdf_files)
+        file_progress = {}
+        for i, pdf_file in enumerate(pdf_files):
+            file_name = os.path.basename(pdf_file)
+            file_progress[file_name] = {
+                "index": i,
+                "progress": 0,
+                "status": "pending",
+                "total_files": total_files
+            }
+
+        # Update cache with initial progress
+        if cache_key in pdf_cache:
+            pdf_cache[cache_key]["file_progress"] = file_progress
+            pdf_cache[cache_key]["processing"] = True
+
+        for i, pdf_file in enumerate(pdf_files):
+            file_name = os.path.basename(pdf_file)
             try:
-                print(f"🔍 Processing {os.path.basename(pdf_file)} (project: {project_name})")
+                print(f"🔍 Processing {file_name} (project: {project_name})")
+                file_progress[file_name]["status"] = "processing"
+
+                # Extract headings (simulate progress steps)
                 headings = extractor.extract_headings(pdf_file)
+                file_progress[file_name]["progress"] = 50
+
+                # Extract chunks
                 chunks = extract_chunks_with_headings(pdf_file, headings)
                 all_chunks.extend(chunks)
+                file_progress[file_name]["progress"] = 100
+                file_progress[file_name]["status"] = "completed"
+
+                # Update cache with current progress
+                if cache_key in pdf_cache:
+                    pdf_cache[cache_key]["file_progress"] = file_progress
+
             except Exception as e:
                 print(f"❌ Error processing {pdf_file}: {e}")
+                file_progress[file_name]["status"] = "error"
+                file_progress[file_name]["error"] = str(e)
+                # Update cache with error status
+                if cache_key in pdf_cache:
+                    pdf_cache[cache_key]["file_progress"] = file_progress
 
         if not all_chunks:
             # Nothing extracted – store placeholder
@@ -331,7 +367,9 @@ def process_pdfs_background(cache_key: str, pdf_files: List[str], temp_dir: Opti
                 "domain": "general",
                 "pdf_files": [f["name"] for f in (existing_meta.get("files", []) + new_files_meta)],
                 "project_name": project_name,
-                "empty": True
+                "empty": True,
+                "file_progress": file_progress,
+                "processing": False
             }
             print(f"⚠️ No chunks extracted for project '{project_name}'.")
             return
@@ -352,11 +390,21 @@ def process_pdfs_background(cache_key: str, pdf_files: List[str], temp_dir: Opti
             "domain": detected_domain,
             "pdf_files": [f["name"] for f in merged_files_meta],
             "project_name": project_name,
-            "index_error": retriever is None
+            "index_error": retriever is None,
+            "file_progress": file_progress,
+            "processing": False
         }
         print(f"✅ Cached {len(all_chunks)} total chunks for project '{project_name}' (cache key {cache_key})")
     except Exception as e:
         print(f"❌ Error processing PDFs for project {project_name}: {e}")
+        # Mark all remaining files as error
+        for file_name in file_progress:
+            if file_progress[file_name]["status"] != "completed":
+                file_progress[file_name]["status"] = "error"
+                file_progress[file_name]["error"] = str(e)
+        if cache_key in pdf_cache:
+            pdf_cache[cache_key]["file_progress"] = file_progress
+            pdf_cache[cache_key]["processing"] = False
     finally:
         if temp_dir:
             try:
@@ -529,7 +577,14 @@ async def get_cache_status(cache_key: str):
         }
     elif cache_key in pdf_cache:
         entry = pdf_cache[cache_key]
-        return {"ready": False, "project_name": entry.get("project_name")}
+        response = {"ready": False, "project_name": entry.get("project_name")}
+        
+        # Include progress information if available
+        if "file_progress" in entry:
+            response["file_progress"] = entry["file_progress"]
+            response["processing"] = entry.get("processing", False)
+        
+        return response
     else:
         return {"ready": False}
 
@@ -780,7 +835,7 @@ async def call_gemini_api(prompt: str, api_key: str, model: str = "gemini-2.0-fl
     }
 
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:  # type: ignore
+        async with httpx.AsyncClient(timeout=600.0) as client:  # type: ignore
             response = await client.post(url, json=payload, headers={"Content-Type": "application/json"})
             if not response.is_success:
                 error_text = await response.aread()

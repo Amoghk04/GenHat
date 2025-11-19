@@ -3,7 +3,7 @@
 
 import {
   cachePDFs,
-  waitForCacheReady,
+  waitForCacheReadyWithProgress,
   analyzeChunksWithGemini
 } from './api.js'
 
@@ -379,6 +379,112 @@ function initializeApp() {
     chatContainerEl.scrollTop = chatContainerEl.scrollHeight
   }
 
+  // Show typing indicator with status
+  function showTypingIndicator(status: string = 'Processing...') {
+    // Remove existing typing indicator if any
+    hideTypingIndicator()
+
+    const typingEl = document.createElement('div')
+    typingEl.id = 'typingIndicator'
+    typingEl.className = 'typing-indicator'
+    typingEl.innerHTML = `
+      <div class="typing-bubble">
+        <div class="typing-dots">
+          <div class="typing-dot"></div>
+          <div class="typing-dot"></div>
+          <div class="typing-dot"></div>
+        </div>
+        <span class="typing-status">${status}</span>
+      </div>
+    `
+
+    chatContainerEl.appendChild(typingEl)
+    chatContainerEl.scrollTop = chatContainerEl.scrollHeight
+  }
+
+  // Hide typing indicator
+  function hideTypingIndicator() {
+    const existing = document.getElementById('typingIndicator')
+    if (existing) {
+      existing.remove()
+    }
+  }
+
+  // Show loading overlay with custom text
+  function showLoadingOverlay(text: string = 'Processing Documents...', subtext: string = 'This may take a few moments') {
+    const overlay = document.getElementById('loadingOverlay') as HTMLElement
+    const textEl = document.getElementById('loadingText') as HTMLElement
+    const subtextEl = document.getElementById('loadingSubtext') as HTMLElement
+    
+    textEl.textContent = text
+    subtextEl.textContent = subtext
+    overlay.classList.add('active')
+  }
+
+  // Hide loading overlay
+  function hideLoadingOverlay() {
+    const overlay = document.getElementById('loadingOverlay') as HTMLElement
+    overlay.classList.remove('active')
+  }
+
+  // Show individual file progress overlay
+  function showFileProgressOverlay(fileNames: string[]) {
+    const overlay = document.getElementById('loadingOverlay') as HTMLElement
+    const textEl = document.getElementById('loadingText') as HTMLElement
+    const subtextEl = document.getElementById('loadingSubtext') as HTMLElement
+    
+    textEl.textContent = 'Building Document Index...'
+    subtextEl.innerHTML = `
+      <div class="file-progress-container">
+        ${fileNames.map((fileName, index) => `
+          <div class="file-progress-item processing">
+            <div class="radial-progress">
+              <div class="radial-progress-circle" style="--progress-angle: 0deg;">
+                <div class="radial-progress-inner">0%</div>
+              </div>
+            </div>
+            <div class="file-progress-info">
+              <div class="file-progress-name">${fileName}</div>
+              <div class="file-progress-status">loading...</div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `
+    overlay.classList.add('active')
+  }
+
+  // Update file progress overlay
+  function updateFileProgressOverlay(fileProgress: Record<string, any>) {
+    const subtextEl = document.getElementById('loadingSubtext') as HTMLElement
+    if (subtextEl) {
+      subtextEl.innerHTML = `
+        <div class="file-progress-container">
+          ${Object.entries(fileProgress).map(([fileName, progress]: [string, any]) => {
+            const statusText = progress.status === 'completed' ? 'done' : 
+                             progress.status === 'processing' ? 'processing...' :
+                             progress.status === 'error' ? `error: ${progress.error || 'unknown'}` : 
+                             'pending...'
+            const statusClass = progress.status === 'completed' ? 'completed' : 
+                              progress.status === 'error' ? 'error' : 'processing'
+            return `
+            <div class="file-progress-item ${statusClass}">
+              <div class="radial-progress">
+                <div class="radial-progress-circle" style="--progress-angle: ${progress.progress * 3.6}deg;">
+                  <div class="radial-progress-inner">${progress.progress}%</div>
+                </div>
+              </div>
+              <div class="file-progress-info">
+                <div class="file-progress-name">${fileName}</div>
+                <div class="file-progress-status">${statusText}</div>
+              </div>
+            </div>
+          `}).join('')}
+        </div>
+      `
+    }
+  }
+
   // Send chat message
   async function sendMessage() {
     const message = chatInputEl.value.trim()
@@ -401,19 +507,24 @@ function initializeApp() {
 
     try {
       appState.isProcessing = true
-      addChatMessage('🤔 Analyzing your documents with Gemini AI...', false)
 
       // If no cache key, upload PDFs first
       if (!appState.cacheKey) {
-        addChatMessage('📤 Uploading and processing PDFs...', false)
+        showLoadingOverlay('Uploading PDFs...', 'Sending documents to backend')
         
         const pdfFiles = files.map(f => f.file)
         const cacheResponse = await cachePDFs(pdfFiles, appState.projectName)
         appState.cacheKey = cacheResponse.cache_key
 
         // Wait for cache to be ready
-        addChatMessage('⏳ Building document index...', false)
-        await waitForCacheReady(appState.cacheKey)
+        showFileProgressOverlay(files.map(f => f.name))
+        await waitForCacheReadyWithProgress(appState.cacheKey, (status) => {
+          if (status.file_progress) {
+            updateFileProgressOverlay(status.file_progress)
+          }
+        })
+        
+        hideLoadingOverlay()
         addChatMessage('✅ Documents indexed and ready!', false)
       }
 
@@ -421,7 +532,8 @@ function initializeApp() {
       const persona = appState.currentPersona
       const task = message
 
-      // Call Gemini analysis
+      // Call Gemini analysis - use typing indicator for AI processing
+      showTypingIndicator('🧠 Analyzing with AI...')
       const analysisResponse = await analyzeChunksWithGemini(
         appState.cacheKey,
         persona,
@@ -429,6 +541,8 @@ function initializeApp() {
         5, // k
         5  // max_chunks_to_analyze
       )
+
+      hideTypingIndicator()
 
       // Format and display response as a single markdown message
       if (analysisResponse.gemini_analysis && analysisResponse.gemini_analysis.length > 0) {
@@ -451,6 +565,8 @@ function initializeApp() {
 
     } catch (error) {
       console.error('Error in sendMessage:', error)
+      hideLoadingOverlay()
+      hideTypingIndicator()
       addChatMessage(
         `❌ Error: ${error instanceof Error ? error.message : 'Failed to analyze documents. Make sure the backend server is running on http://localhost:8080'}`,
         false
@@ -565,19 +681,25 @@ function initializeApp() {
       
       // Upload to backend and cache
       try {
-        addChatMessage('📤 Sending PDFs to backend for processing...', false)
         appState.isProcessing = true
+        showLoadingOverlay('Processing PDFs...', 'Sending documents to backend')
         
         const pdfFiles = files.map(f => f.file)
         const cacheResponse = await cachePDFs(pdfFiles, appState.projectName)
         appState.cacheKey = cacheResponse.cache_key
         
-        addChatMessage('⏳ Building document index...', false)
-        await waitForCacheReady(appState.cacheKey)
+        showFileProgressOverlay(files.map(f => f.name))
+        await waitForCacheReadyWithProgress(appState.cacheKey, (status) => {
+          if (status.file_progress) {
+            updateFileProgressOverlay(status.file_progress)
+          }
+        })
         
+        hideLoadingOverlay()
         addChatMessage('✅ Documents are ready! You can now ask questions about them.', false)
       } catch (error) {
         console.error('Error caching PDFs:', error)
+        hideLoadingOverlay()
         addChatMessage(
           `⚠️ Failed to process PDFs on backend: ${error instanceof Error ? error.message : 'Unknown error'}. You can still view them, but AI features may not work.`,
           false

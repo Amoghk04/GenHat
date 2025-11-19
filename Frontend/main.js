@@ -23,9 +23,6 @@ function createWindow() {
   // Maximize the window on startup (fills the screen but keeps titlebar & controls)
   win.maximize()
 
-  // Open DevTools for debugging
-  win.webContents.openDevTools()
-
   win.loadFile(path.join(__dirname, 'index.html'))
 }
 
