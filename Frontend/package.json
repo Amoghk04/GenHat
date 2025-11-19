@@ -13,11 +13,10 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "pdfjs-dist": "^3.11.174"
+    "pdfjs-dist": "^5.4.394"
   },
   "devDependencies": {
-    "electron": "^39.1.2",
-    "typescript": "^5.3.3",
-    "@types/node": "^20.4.2"
+    "@types/node": "^20.4.2",
+    "typescript": "^5.3.3"
   }
 }
