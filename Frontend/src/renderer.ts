@@ -381,7 +381,7 @@ function initializeApp() {
   }
 
   // Show typing indicator with status
-  function showTypingIndicator(status: string = 'Processing...') {
+  function showTypingIndicator() {
     // Remove existing typing indicator if any
     hideTypingIndicator()
 
@@ -394,8 +394,7 @@ function initializeApp() {
           <div class="typing-dot"></div>
           <div class="typing-dot"></div>
           <div class="typing-dot"></div>
-        </div>
-        <span class="typing-status">${status}</span>
+        </div> 
       </div>
     `
 
@@ -514,14 +513,14 @@ function initializeApp() {
 
     try {
       appState.isProcessing = true
-      addChatMessage('🤔 Analyzing your documents with Gemini AI...', false)
+     
 
       // Extract persona and task from message, or use defaults
       const persona = appState.currentPersona
       const task = message
 
       // Call Gemini analysis - use typing indicator for AI processing
-      showTypingIndicator('🧠 Analyzing with AI...')
+      showTypingIndicator()
       const analysisResponse = await analyzeChunksWithGemini(
         appState.cacheKey,
         persona,
@@ -543,13 +542,7 @@ function initializeApp() {
       }
 
       // Show metadata
-      if (analysisResponse.metadata) {
-        const meta = analysisResponse.metadata
-        addChatMessage(
-          `📊 Analyzed ${meta.chunks_analyzed} sections from ${meta.input_documents.length} document(s) using ${meta.gemini_model}`,
-          false
-        )
-      }
+     
 
     } catch (error) {
       console.error('Error in sendMessage:', error)
@@ -786,7 +779,7 @@ function initializeApp() {
   })
 
   // Initialize with welcome message
-  addChatMessage('Welcome to GenHat! 👋 Upload PDFs from the sidebar and use the menu to explore different features.', false)
+  // addChatMessage('Welcome to GenHat! 👋 Upload PDFs from the sidebar and use the menu to explore different features.', false)
 
   // Clean up object URLs when the page unloads
   window.addEventListener('beforeunload', () => {
