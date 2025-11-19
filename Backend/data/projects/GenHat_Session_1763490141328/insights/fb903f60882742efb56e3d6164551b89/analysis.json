@@ -1,0 +1,108 @@
+{
+  "metadata": {
+    "input_documents": [
+      "LAB5-Langchain.pdf",
+      "MAP-Research-Paper.pdf",
+      "GenAI - Final Lab.pdf",
+      "GenAI exercise 1.pdf"
+    ],
+    "persona": "General User",
+    "job_to_be_done": "hello",
+    "domain": "general",
+    "total_chunks_found": 4,
+    "chunks_analyzed": 4,
+    "gemini_model": "gemini-2.5-flash",
+    "project_name": "GenHat_Session_1763490141328"
+  },
+  "retrieval_results": [
+    {
+      "document": "MAP-Research-Paper.pdf",
+      "section_title": "5. General-Purpose",
+      "content": "5. General-Purpose",
+      "page_number": 11,
+      "hybrid_score": 0.7134190082550049,
+      "bm25_score": 1.0,
+      "embedding_score": 0.2835475206375122
+    },
+    {
+      "document": "GenAI exercise 1.pdf",
+      "section_title": "use of equipment",
+      "content": "use of equipment \n\n \nPrompt - Create a detailed, equipment-free workout routine designed to help me lose 12 \npounds in two months. The plan should include a mix of cardio, strength, and flexibility \nexercises that can be done at home or anywhere without any gym equipment. Provide a \nweekly schedule with exercise types, durations, and intensity levels, along with tips on \nprogression and recovery. Also, include general advice on staying motivated and safe while \nworking out.",
+      "page_number": 1,
+      "hybrid_score": 0.22329560700362527,
+      "bm25_score": 0.37934828108061697,
+      "embedding_score": -0.010783404111862183
+    },
+    {
+      "document": "GenAI - Final Lab.pdf",
+      "section_title": "Code:",
+      "content": "Code: \nimport os \nfrom langchain_cohere import ChatCohere, CohereEmbeddings \nfrom langchain_community.vectorstores import FAISS \nfrom langchain.text_splitter import RecursiveCharacterTextSplitter \nfrom langchain.chains import RetrievalQA \nfrom langchain.document_loaders import PyPDFLoader \n# Set your API key \nos.environ[\"COHERE_API_KEY\"] = \"KEY\" \nloader = PyPDFLoader(\"/content/IPC_186045.pdf\") \ndocs = loader.load() \nprint(f\"Total pages loaded: {len(docs)}\") \nsplitter = RecursiveCharacterTextSplitter(chunk_size=200, chunk_overlap=100) \nchunks = splitter.split_documents(docs) \nprint(f\"Total chunks created: {len(chunks)}\") \nchunks = chunks[:20] \nembeddings = CohereEmbeddings(model=\"embed-english-v3.0\") \nvectorstore = FAISS.from_documents(chunks, embeddings) \nretriever = vectorstore.as_retriever() \nllm = ChatCohere(model=\"command-a-03-2025\") \nqa_chain = RetrievalQA.from_chain_type( \n   llm=llm, \n   retriever=retriever, \n   chain_type=\"stuff\" \n) \nprint(\"IPC Chatbot ready! Type 'exit' to stop.\\n\") \nwhile True: \n   query = input(\"You: \") \n   if query.lower() == \"exit\": \n       break \n   response = qa_chain.run(query) \n   print(f\"Bot: {response}\\n\") \ndef chat_with_ipc(message, history): \n   if not message: \n       return history, history \n\n   # Get model response \n   response = qa_chain.run(message) \n   # Append to chat history (OpenAI-style format) \n   history.append({\"role\": \"user\", \"content\": message}) \n   history.append({\"role\": \"assistant\", \"content\": response}) \n   return history, history \nwith gr.Blocks() as demo: \n   gr.Markdown(\"## \u2696 IPC Chatbot \u2014 Ask questions about the Indian Penal Code\") \n   chatbot = gr.Chatbot(type=\"messages\", height=400) \n   msg = gr.Textbox( \n       placeholder=\"Type your question about IPC and press Enter...\", \n       label=\"Your Question\" \n   ) \n   state = gr.State([]) \n   # Submit message \n   msg.submit(chat_with_ipc, [msg, state], [chatbot, state]) \n   msg.submit(lambda: \"\", None, msg)  # clear the input box after sending \ndemo.launch(share=True)",
+      "page_number": 1,
+      "hybrid_score": 0.12252481044945687,
+      "bm25_score": 0.14688482485906232,
+      "embedding_score": 0.08598478883504868
+    },
+    {
+      "document": "LAB5-Langchain.pdf",
+      "section_title": "1.  Create a LangChain application that takes the name of an institution as input and extracts",
+      "content": "1.  Create a LangChain application that takes the name of an institution as input and extracts",
+      "page_number": 1,
+      "hybrid_score": 0.05231980681419373,
+      "bm25_score": 0.0,
+      "embedding_score": 0.13079951703548431
+    }
+  ],
+  "gemini_analysis": [
+    {
+      "chunk_index": 0,
+      "combined": true,
+      "included_chunk_count": 4,
+      "included_sections": [
+        {
+          "index": 0,
+          "document": "MAP-Research-Paper.pdf",
+          "section_title": "5. General-Purpose",
+          "page_number": 11,
+          "hybrid_score": 0.7134190082550049,
+          "bm25_score": 1.0,
+          "embedding_score": 0.2835475206375122
+        },
+        {
+          "index": 1,
+          "document": "GenAI exercise 1.pdf",
+          "section_title": "use of equipment",
+          "page_number": 1,
+          "hybrid_score": 0.22329560700362527,
+          "bm25_score": 0.37934828108061697,
+          "embedding_score": -0.010783404111862183
+        },
+        {
+          "index": 2,
+          "document": "GenAI - Final Lab.pdf",
+          "section_title": "Code:",
+          "page_number": 1,
+          "hybrid_score": 0.12252481044945687,
+          "bm25_score": 0.14688482485906232,
+          "embedding_score": 0.08598478883504868
+        },
+        {
+          "index": 3,
+          "document": "LAB5-Langchain.pdf",
+          "section_title": "1.  Create a LangChain application that takes the name of an institution as input and extracts",
+          "page_number": 1,
+          "hybrid_score": 0.05231980681419373,
+          "bm25_score": 0.0,
+          "embedding_score": 0.13079951703548431
+        }
+      ],
+      "gemini_analysis": "## Key Insights\n*   The provided documents demonstrate the practical application of Generative AI, specifically using the LangChain framework for building conversational agents and information extraction tools.\n*   One key application is the development of a Retrieval-Augmented Generation (RAG) chatbot, exemplified by the \"IPC Chatbot\" designed to answer questions about the Indian Penal Code by loading and processing a PDF document.\n*   Generative AI systems can be prompted to create detailed, personalized plans, such as an equipment-free workout routine tailored for specific weight loss goals and timelines.\n*   The technical foundation involves Python code utilizing libraries like `langchain_cohere` for embedding and chat models, `FAISS` for vector storage, and `RecursiveCharacterTextSplitter` for document preparation.\n*   User interfaces, such as those built with Gradio, are employed to facilitate interaction with these AI systems, allowing users to input queries and receive responses.\n\n## Actionable Recommendations\n*   **For Developers:** Leverage LangChain to build domain-specific chatbots by integrating document loaders, text splitters, vector stores, and LLMs (e.g., `ChatCohere`) to provide informed responses based on proprietary or specialized knowledge bases.\n*   **For Users Interacting with AI:** Formulate detailed and specific prompts, as shown in the workout routine example, to guide the AI towards generating highly relevant and tailored outputs.\n*   **For System Implementers:** Consider using frameworks like Gradio to create user-friendly web interfaces for AI applications, making complex systems accessible to a broader audience.\n*   **For Content Creators/Curators:** Prepare and organize knowledge documents (e.g., PDFs like `IPC_186045.pdf`) for efficient ingestion by AI systems, ensuring accurate and comprehensive information retrieval.\n\n## Did You Know?\n*   A chatbot can be built to answer questions about the Indian Penal Code by loading a specific PDF document. (Section 3)\n*   You can ask a Generative AI to create a detailed, equipment-free workout routine to lose 12 pounds in two months. (Section 2)\n*   AI applications can split documents into \"chunks\" and convert them into \"embeddings\" for efficient information retrieval. (Section 3)\n*   The Cohere `command-a-03-2025` model can be used within LangChain for conversational AI tasks. (Section 3)\n\n## Contradictions\nThere are no direct contradictions or inconsistencies across the provided sections. They describe complementary aspects of Generative AI development and application.\n\n## Persona Alignment\nFor a \"General User\" performing the task \"hello\", these documents provide context on how such an interaction might unfold with an AI system:\n*   **Initial Interaction:** A \"hello\" would be the first step in engaging with systems like the \"IPC Chatbot\" (Section 3), which features a prompt \"Type your question about IPC and press Enter...\" following an initial interaction.\n*   **General-Purpose Systems:** Section 1's \"General-Purpose\" heading suggests that AI systems are designed to handle a wide array of user intents, starting with a simple greeting.\n*   **Query Formulation:** After a \"hello,\" a general user might proceed to formulate a detailed query like the workout routine prompt (Section 2) or a question for a specific chatbot (Section 3).\n*   **Application Input:** Section 4 indicates that LangChain applications are designed to take user input (e.g., an institution's name), implying a conversational or interactive starting point for which \"hello\" could be an opener.\n\n## Summary\nThe aggregated documents illustrate the development and application of Generative AI, focusing on LangChain. They showcase how AI can be utilized to create personalized content (e.g., workout plans) and build domain-specific chatbots (e.g., IPC Chatbot) capable of answering questions based on loaded documents. The underlying processes involve document handling, embeddings, vector stores, and large language models, often presented through interactive user interfaces.",
+      "analysis_timestamp": 9535.078569947
+    }
+  ],
+  "summary": {
+    "top_insights": [
+      "## Key Insights\n*   The provided documents demonstrate the practical application of Generative AI, specifically using the LangChain framework for building conversational agents and information extraction tools.\n*   One key application is the development of a Retrieval-Augmented Generation (RAG) chatbot, exemplified by the \"IPC Chatbot\" designed to answer questions about the Indian Penal Code by loading and processing a PDF document.\n*   Generative AI systems can be prompted to create detailed, personalized plans, such as an equipment-free workout routine tailored for specific weight loss goals and timelines.\n*   The technical foundation involves Python code utilizing libraries like `langchain_cohere` for embedding and chat models, `FAISS` for vector storage, and `RecursiveCharacterTextSplitter` for document preparation.\n*   User interfaces, such as those built with Gradio, are employed to facilitate interaction with these AI systems, allowing users to input queries and receive responses.\n\n## Actionable Recommendations\n*   **For Developers:** Leverage LangChain to build domain-specific chatbots by integrating document loaders, text splitters, vector stores, and LLMs (e.g., `ChatCohere`) to provide informed responses based on proprietary or specialized knowledge bases.\n*   **For Users Interacting with AI:** Formulate detailed and specific prompts, as shown in the workout routine example, to guide the AI towards generating highly relevant and tailored outputs.\n*   **For System Implementers:** Consider using frameworks like Gradio to create user-friendly web interfaces for AI applications, making complex systems accessible to a broader audience.\n*   **For Content Creators/Curators:** Prepare and organize knowledge documents (e.g., PDFs like `IPC_186045.pdf`) for efficient ingestion by AI systems, ensuring accurate and comprehensive information retrieval.\n\n## Did You Know?\n*   A chatbot can be built to answer questions about the Indian Penal Code by loading a specific PDF document. (Section 3)\n*   You can ask a Generative AI to create a detailed, equipment-free workout routine to lose 12 pounds in two months. (Section 2)\n*   AI applications can split documents into \"chunks\" and convert them into \"embeddings\" for efficient information retrieval. (Section 3)\n*   The Cohere `command-a-03-2025` model can be used within LangChain for conversational AI tasks. (Section 3)\n\n## Contradictions\nThere are no direct contradictions or inconsistencies across the provided sections. They describe complementary aspects of Generative AI development and application.\n\n## Persona Alignment\nFor a \"General User\" performing the task \"hello\", these documents provide context on how such an interaction might unfold with an AI system:\n*   **Initial Interaction:** A \"hello\" would be the first step in engaging with systems like the \"IPC Chatbot\" (Section 3), which features a prompt \"Type your question about IPC and press Enter...\" following an initial interaction.\n*   **General-Purpose Systems:** Section 1's \"General-Purpose\" heading suggests that AI systems are designed to handle a wide array of user intents, starting with a simple greeting.\n*   **Query Formulation:** After a \"hello,\" a general user might proceed to formulate a detailed query like the workout routine prompt (Section 2) or a question for a specific chatbot (Section 3).\n*   **Application Input:** Section 4 indicates that LangChain applications are designed to take user input (e.g., an institution's name), implying a conversational or interactive starting point for which \"hello\" could be an opener.\n\n## Summary\nThe aggregated documents illustrate the development and application of Generative AI, focusing on LangChain. They showcase how AI can be utilized to create personalized content (e.g., workout plans) and build domain-specific chatbots (e.g., IPC Chatbot) capable of answering questions based on loaded documents. The underlying processes involve document handling, embeddings, vector stores, and large language models, often presented through interactive user interfaces."
+    ]
+  },
+  "insight_id": "fb903f60882742efb56e3d6164551b89"
+}

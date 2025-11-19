@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Module Loading Test</title>
+  <style>
+    body {
+      font-family: system-ui;
+      padding: 20px;
+      background: #1a1a1a;
+      color: #e0e0e0;
+    }
+    .test {
+      margin: 10px 0;
+      padding: 10px;
+      border-radius: 4px;
+    }
+    .pass { background: #0f4; color: #000; }
+    .fail { background: #f04; color: #fff; }
+  </style>
+</head>
+<body>
+  <h1>GenHat Module Loading Test</h1>
+  <div id="results"></div>
+  
+  <script type="module">
+    const results = document.getElementById('results');
+    
+    function addResult(test, passed, message) {
+      const div = document.createElement('div');
+      div.className = `test ${passed ? 'pass' : 'fail'}`;
+      div.textContent = `${passed ? '✅' : '❌'} ${test}: ${message}`;
+      results.appendChild(div);
+    }
+    
+    // Test 1: PDF.js loaded
+    try {
+      if (typeof pdfjsLib !== 'undefined') {
+        addResult('PDF.js', true, `Version ${pdfjsLib.version}`);
+      } else {
+        addResult('PDF.js', false, 'Not loaded');
+      }
+    } catch (e) {
+      addResult('PDF.js', false, e.message);
+    }
+    
+    // Test 2: API module
+    try {
+      const api = await import('./dist/api.js');
+      addResult('API Module', true, `Functions: ${Object.keys(api).join(', ')}`);
+    } catch (e) {
+      addResult('API Module', false, e.message);
+    }
+    
+    // Test 3: PDF Viewer module
+    try {
+      const viewer = await import('./dist/pdfViewer.js');
+      addResult('PDF Viewer Module', true, `Classes: ${Object.keys(viewer).join(', ')}`);
+    } catch (e) {
+      addResult('PDF Viewer Module', false, e.message);
+    }
+    
+    // Test 4: Backend connection
+    try {
+      const response = await fetch('http://localhost:8080/api/');
+      const data = await response.json();
+      addResult('Backend Connection', true, data.message);
+    } catch (e) {
+      addResult('Backend Connection', false, e.message);
+    }
+    
+    // Test 5: Main renderer module
+    try {
+      const renderer = await import('./dist/renderer.js');
+      addResult('Renderer Module', true, 'Loaded successfully');
+    } catch (e) {
+      addResult('Renderer Module', false, e.message);
+    }
+  </script>
+</body>
+</html>

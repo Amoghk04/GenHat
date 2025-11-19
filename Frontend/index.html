@@ -4,6 +4,16 @@
     <meta charset="utf-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; connect-src 'self' http://localhost:8080 https://generativelanguage.googleapis.com; img-src 'self' data: blob:; font-src 'self' data:;" />
+    
+    <!-- PDF.js library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+      // Configure PDF.js worker
+      if (typeof pdfjsLib !== 'undefined') {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      }
+    </script>
     
     <style>
       body { 
@@ -390,7 +400,7 @@
     <main style="display: flex; gap: 20px; height: 100vh; padding: 20px; box-sizing: border-box;">
       <!-- Left Section: Files Sidebar -->
       <div style="width: 300px; display: flex; flex-direction: column; background: #0d0d0d; border: 1px solid #2a2a2a; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);">
-        <img src="genhat-removebg-preview.png" alt="GenHat Logo" style="width: 300px; margin: 0 0 8px 0;" />
+        <img src="assets/genhat-removebg-preview.png" alt="GenHat Logo" style="width: 300px; margin: 0 0 8px 0;" />
         
         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
           <h3 style="margin: 0; font-size: 16px; font-weight: 600; color: #e0e0e0;">Files</h3>
@@ -445,7 +455,7 @@
     <!-- Radial Menu Component -->
     <div class="radial-menu-container">
       <div class="semi-circle-trigger">
-        <img src="outline-1-removebg-preview.png" alt="Menu" />
+        <img src="assets/outline-1-removebg-preview.png" alt="Menu" />
       </div>
       <div class="radial-menu" id="radialMenu">
         <div class="menu-item" data-platform="mindmap" data-index="0">
@@ -463,6 +473,34 @@
       </div>
     </div>
 
-    <script src="./dist/renderer.js" defer></script>
+    <script type="module">
+      // Error handler for module loading
+      window.addEventListener('error', (e) => {
+        console.error('Global error:', e.message, e.filename, e.lineno, e.colno);
+        if (e.message.includes('Failed to fetch') || e.message.includes('module')) {
+          document.body.innerHTML += `
+            <div style="position: fixed; top: 0; left: 0; right: 0; background: #f44336; color: white; padding: 16px; z-index: 10000;">
+              <strong>Module Loading Error:</strong> ${e.message}<br>
+              <small>Check the console for details. Make sure all files are built with 'npm run build'.</small>
+            </div>
+          `;
+        }
+      }, true);
+      
+      // Import and run main renderer
+      import('./dist/renderer.js').catch(err => {
+        console.error('Failed to load renderer:', err);
+        document.body.innerHTML = `
+          <div style="display: flex; align-items: center; justify-content: center; height: 100vh; background: #1a1a1a; color: #ff6b6b; font-family: system-ui; text-align: center;">
+            <div>
+              <h1>❌ Failed to Load Application</h1>
+              <p>${err.message}</p>
+              <pre style="background: #0d0d0d; padding: 20px; border-radius: 8px; text-align: left; max-width: 600px; overflow: auto;">${err.stack}</pre>
+              <p><small>Make sure you ran 'npm run build' before starting the app.</small></p>
+            </div>
+          </div>
+        `;
+      });
+    </script>
   </body>
 </html>

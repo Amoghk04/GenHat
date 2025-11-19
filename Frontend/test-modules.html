@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Module Test</title>
+</head>
+<body>
+  <h1>Testing ES Modules</h1>
+  <div id="status">Loading...</div>
+  
+  <script type="module">
+    import { cachePDFs } from './dist/api.js';
+    
+    document.getElementById('status').textContent = 'ES Modules working! ✅';
+    console.log('cachePDFs function available:', typeof cachePDFs);
+  </script>
+</body>
+</html>
