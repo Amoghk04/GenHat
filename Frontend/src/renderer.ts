@@ -4,7 +4,8 @@
 import {
   cachePDFs,
   waitForCacheReady,
-  analyzeChunksWithGemini
+  analyzeChunksWithGemini,
+  removePDF
 } from './api.js'
 
 import { PDFViewer } from './pdfViewer.js'
@@ -393,6 +394,12 @@ function initializeApp() {
       return
     }
 
+    // Check if cache is ready
+    if (!appState.cacheKey) {
+      addChatMessage('⏳ Please wait for documents to finish processing before querying...', false)
+      return
+    }
+
     // Check if processing
     if (appState.isProcessing) {
       addChatMessage('Please wait, I\'m processing your previous request...', false)
@@ -402,20 +409,6 @@ function initializeApp() {
     try {
       appState.isProcessing = true
       addChatMessage('🤔 Analyzing your documents with Gemini AI...', false)
-
-      // If no cache key, upload PDFs first
-      if (!appState.cacheKey) {
-        addChatMessage('📤 Uploading and processing PDFs...', false)
-        
-        const pdfFiles = files.map(f => f.file)
-        const cacheResponse = await cachePDFs(pdfFiles, appState.projectName)
-        appState.cacheKey = cacheResponse.cache_key
-
-        // Wait for cache to be ready
-        addChatMessage('⏳ Building document index...', false)
-        await waitForCacheReady(appState.cacheKey)
-        addChatMessage('✅ Documents indexed and ready!', false)
-      }
 
       // Extract persona and task from message, or use defaults
       const persona = appState.currentPersona
@@ -491,8 +484,11 @@ function initializeApp() {
       deleteBtn.className = 'delete-btn'
       deleteBtn.textContent = '×'
       deleteBtn.title = 'Delete file'
-      deleteBtn.addEventListener('click', (e) => {
+      deleteBtn.addEventListener('click', async (e) => {
         e.stopPropagation() // Prevent card click
+        
+        const fileToRemove = entry.name
+        
         // Remove file from array
         files.splice(idx, 1)
         // Adjust selected index if necessary
@@ -506,7 +502,40 @@ function initializeApp() {
           URL.revokeObjectURL(entry.url)
         }
         rebuildFileList()
-        addChatMessage(`Removed "${entry.name}" from the list.`, false)
+        addChatMessage(`🗑️ Removed "${fileToRemove}" from the list.`, false)
+        
+        // If we have a cache key (PDFs were already uploaded), recompute embeddings
+        if (appState.cacheKey && !appState.isProcessing) {
+          try {
+            appState.isProcessing = true
+            addChatMessage('🔄 Recomputing embeddings without this PDF...', false)
+            
+            // Call backend to remove PDF and rebuild index
+            const removeResponse = await removePDF(appState.projectName, fileToRemove)
+            
+            // Update cache key with the new one
+            appState.cacheKey = removeResponse.cache_key
+            
+            // Wait for the new cache to be ready
+            await waitForCacheReady(appState.cacheKey)
+            
+            if (removeResponse.remaining_pdfs === 0) {
+              addChatMessage('⚠️ All PDFs removed. Upload new files to continue.', false)
+            } else {
+              addChatMessage(`✅ Index rebuilt with ${removeResponse.remaining_pdfs} remaining PDF(s).`, false)
+            }
+          } catch (error) {
+            console.error('Error recomputing embeddings:', error)
+            addChatMessage(
+              `⚠️ Could not recompute embeddings: ${error instanceof Error ? error.message : 'Unknown error'}. You may need to re-upload the remaining PDFs.`,
+              false
+            )
+            // Clear cache key since it may be invalid
+            appState.cacheKey = null
+          } finally {
+            appState.isProcessing = false
+          }
+        }
       })
       thumbnailDiv.appendChild(deleteBtn)
       

@@ -211,3 +211,35 @@ export async function waitForCacheReady(
   
   throw new Error('Cache preparation timed out')
 }
+
+export interface RemovePDFResponse {
+  cache_key: string
+  message: string
+  removed: boolean
+  remaining_pdfs: number
+  remaining_chunks?: number
+}
+
+/**
+ * Remove a PDF from the project and recompute embeddings
+ */
+export async function removePDF(
+  projectName: string,
+  filename: string
+): Promise<RemovePDFResponse> {
+  const formData = new FormData()
+  formData.append('project_name', projectName)
+  formData.append('filename', filename)
+
+  const response = await fetch(`${BACKEND_URL}/remove-pdf`, {
+    method: 'POST',
+    body: formData
+  })
+
+  if (!response.ok) {
+    const error = await response.text()
+    throw new Error(`Failed to remove PDF: ${error}`)
+  }
+
+  return response.json()
+}
