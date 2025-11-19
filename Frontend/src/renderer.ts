@@ -356,6 +356,7 @@ function initializeApp() {
     `
 
     const bubble = document.createElement('div')
+    bubble.className = `message-bubble ${isUser ? 'user' : ''}`
     
     // For bot messages, render markdown; for user messages, use plain text
     if (!isUser) {
@@ -363,18 +364,37 @@ function initializeApp() {
     } else {
       bubble.textContent = text
     }
-    
-    bubble.style.cssText = `
-      background: ${isUser ? 'linear-gradient(135deg, #ff8c00 0%, #ff6b00 100%)' : '#2a2a2a'};
-      color: white;
-      padding: 12px 16px;
-      border-radius: ${isUser ? '16px 16px 4px 16px' : '16px 16px 16px 4px'};
-      max-width: 70%;
-      word-wrap: break-word;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-      line-height: 1.6;
-    `
 
+    // Create copy button
+    const copyBtn = document.createElement('button')
+    copyBtn.className = 'message-copy-btn'
+    copyBtn.innerHTML = `
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
+        <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
+      </svg>
+    `
+    copyBtn.title = 'Copy message'
+    copyBtn.addEventListener('click', async (e) => {
+      e.stopPropagation()
+      try {
+        await navigator.clipboard.writeText(text)
+        // Show toast notification
+        const toast = document.createElement('div')
+        toast.className = 'copy-toast'
+        toast.textContent = 'Copied!'
+        document.body.appendChild(toast)
+        
+        setTimeout(() => {
+          toast.classList.add('hide')
+          setTimeout(() => toast.remove(), 300)
+        }, 2000)
+      } catch (err) {
+        console.error('Failed to copy:', err)
+      }
+    })
+
+    bubble.appendChild(copyBtn)
     messageEl.appendChild(bubble)
     chatContainerEl.appendChild(messageEl)
     chatContainerEl.scrollTop = chatContainerEl.scrollHeight
