@@ -53,13 +53,9 @@ function initializeApp() {
   const popupBody = document.getElementById('popupBody') as HTMLDivElement | null
   const closePopup = document.getElementById('closePopup') as HTMLButtonElement | null
   
-  // Radial menu
-  const radialMenu = document.getElementById('radialMenu') as HTMLDivElement | null
-  const menuItems = document.querySelectorAll('.menu-item')
-
 
   if (!fileInput || !fileListEl || !chatContainer || !chatInput || !sendButton || 
-      !popupModal || !popupTitle || !popupBody || !closePopup || !radialMenu) {
+      !popupModal || !popupTitle || !popupBody || !closePopup) {
     console.error('❌ Renderer: missing expected DOM elements', {
       fileInput: !!fileInput,
       fileListEl: !!fileListEl,
@@ -69,8 +65,7 @@ function initializeApp() {
       popupModal: !!popupModal,
       popupTitle: !!popupTitle,
       popupBody: !!popupBody,
-      closePopup: !!closePopup,
-      radialMenu: !!radialMenu
+      closePopup: !!closePopup
     })
     return
   }
@@ -98,27 +93,6 @@ function initializeApp() {
 
   let currentPDFViewer: PDFViewer | null = null
 
-  // Position menu items in a bottom-left quarter circle (reversed order)
-  const radius = 150
-  const itemCount = menuItems.length
-  const angleStep = (Math.PI / 2) / (itemCount - 1) // Quarter circle (90 degrees)
-  const startAngle = Math.PI / 2 // Start from bottom (90 degrees)
-
-  menuItems.forEach((item, index) => {
-    const reversedIndex = itemCount - 1 - index // Reverse the order
-    const angle = startAngle + angleStep * reversedIndex // Goes from 90° to 180° in reverse
-    const x = Math.cos(angle) * radius
-    const y = Math.sin(angle) * radius
-    
-    const menuItem = item as HTMLElement
-    // Start at center (0, 0)
-    menuItem.style.left = '0px'
-    menuItem.style.top = '0px'
-    // Set CSS custom properties for the target position
-    menuItem.style.setProperty('--tx', `${x}px`)
-    menuItem.style.setProperty('--ty', `${y}px`)
-  })
-
   function clearObjectURLs() {
     for (const f of files) {
       if (f.url) {
@@ -131,17 +105,6 @@ function initializeApp() {
   // Show popup modal with platform-specific options
   function showPopup(platform: Platform) {
     currentPlatform = platform
-    
-    // Update active menu item styling
-    menuItems.forEach(item => {
-      const itemEl = item as HTMLElement
-      const itemPlatform = itemEl.getAttribute('data-platform')
-      if (itemPlatform === platform) {
-        itemEl.classList.add('active')
-      } else {
-        itemEl.classList.remove('active')
-      }
-    })
 
     let title = ''
     let content = ''
@@ -963,7 +926,7 @@ function initializeApp() {
         const cacheResponse = await cachePDFs(pdfFiles, appState.projectName)
         appState.cacheKey = cacheResponse.cache_key
         
-        showFileProgressOverlay(files.map(f => f.name))
+        showFileProgressOverlay(uniqueNewFiles.map(f => f.name))
         await waitForCacheReadyWithProgress(appState.cacheKey, (status) => {
           if (status.file_progress) {
             updateFileProgressOverlay(status.file_progress)
@@ -985,16 +948,6 @@ function initializeApp() {
     
     // Reset the file input so the same file can be added again if needed
     fileInput.value = ''
-  })
-
-  // Radial menu item click handlers
-  menuItems.forEach(item => {
-    item.addEventListener('click', () => {
-      const platform = (item as HTMLElement).getAttribute('data-platform') as Platform
-      if (platform) {
-        showPopup(platform)
-      }
-    })
   })
 
   // Chat send button
