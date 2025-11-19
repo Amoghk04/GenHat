@@ -23,6 +23,8 @@ type ChatMessage = {
   text: string
   isUser: boolean
   timestamp: Date
+  id?: string
+  branchFrom?: string
 }
 
 type AppState = {
@@ -334,11 +336,14 @@ function initializeApp() {
   }
 
   // Add message to chat
-  function addChatMessage(text: string, isUser: boolean) {
+  function addChatMessage(text: string, isUser: boolean, branchFrom?: string) {
+    const messageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
     const message: ChatMessage = {
       text,
       isUser,
-      timestamp: new Date()
+      timestamp: new Date(),
+      id: messageId,
+      branchFrom
     }
     chatMessages.push(message)
 
@@ -347,13 +352,10 @@ function initializeApp() {
       chatContainerEl.innerHTML = ''
     }
 
-    const messageEl = document.createElement('div')
-    messageEl.style.cssText = `
-      display: flex;
-      flex-direction: column;
-      align-items: ${isUser ? 'flex-end' : 'flex-start'};
-      margin-bottom: 12px;
-    `
+    // Create message wrapper (flex container for bubble and buttons)
+    const messageWrapper = document.createElement('div')
+    messageWrapper.className = `message-item-wrapper ${isUser ? 'user' : ''}`
+    messageWrapper.setAttribute('data-message-id', messageId)
 
     const bubble = document.createElement('div')
     bubble.className = `message-bubble ${isUser ? 'user' : ''}`
@@ -364,6 +366,10 @@ function initializeApp() {
     } else {
       bubble.textContent = text
     }
+
+    // Create buttons container (outside bubble)
+    const buttonsContainer = document.createElement('div')
+    buttonsContainer.className = 'message-buttons-container'
 
     // Create copy button
     const copyBtn = document.createElement('button')
@@ -394,13 +400,182 @@ function initializeApp() {
       }
     })
 
-    bubble.appendChild(copyBtn)
-    messageEl.appendChild(bubble)
-    chatContainerEl.appendChild(messageEl)
+    buttonsContainer.appendChild(copyBtn)
+
+    // Create edit button (only for user messages)
+    if (isUser) {
+      const editBtn = document.createElement('button')
+      editBtn.className = 'message-edit-btn'
+      editBtn.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+        </svg>
+      `
+      editBtn.title = 'Edit and continue'
+      editBtn.addEventListener('click', (e) => {
+        e.stopPropagation()
+        enterEditMode(messageWrapper, bubble, text, messageId, isUser)
+      })
+      buttonsContainer.appendChild(editBtn)
+    }
+
+    // Assemble: wrapper contains bubble and buttons
+    messageWrapper.appendChild(bubble)
+    messageWrapper.appendChild(buttonsContainer)
+
+    chatContainerEl.appendChild(messageWrapper)
     chatContainerEl.scrollTop = chatContainerEl.scrollHeight
   }
 
-  // Show typing indicator with status
+  // Enter edit mode for a message
+  function enterEditMode(messageEl: HTMLElement, bubble: HTMLElement, originalText: string, messageId: string, isUser: boolean) {
+    const messageIndex = chatMessages.findIndex(m => m.id === messageId)
+    if (messageIndex === -1) return
+
+    // Get the current text from the data store (not the stale parameter)
+    const currentText = chatMessages[messageIndex].text
+
+    // Create a modal dialog for editing
+    const modal = document.createElement('div')
+    modal.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+      backdrop-filter: blur(4px);
+    `
+
+    const dialog = document.createElement('div')
+    dialog.style.cssText = `
+      background: #0d0d0d;
+      border: 2px solid #ff8c00;
+      border-radius: 12px;
+      padding: 24px;
+      max-width: 500px;
+      width: 90%;
+      box-shadow: 0 8px 32px rgba(255, 140, 0, 0.3);
+    `
+
+    const title = document.createElement('h3')
+    title.textContent = 'Edit Message & Continue'
+    title.style.cssText = `
+      margin: 0 0 16px 0;
+      color: #ff8c00;
+      font-size: 18px;
+    `
+
+    const textarea = document.createElement('textarea')
+    textarea.value = currentText
+    textarea.placeholder = 'Edit your message...'
+    textarea.style.cssText = `
+      width: 100%;
+      min-height: 100px;
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 8px;
+      padding: 12px;
+      color: #e0e0e0;
+      font-size: 14px;
+      outline: none;
+      resize: vertical;
+      font-family: inherit;
+      box-sizing: border-box;
+      margin-bottom: 16px;
+    `
+
+    const buttons = document.createElement('div')
+    buttons.style.cssText = `
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+    `
+
+    const cancelBtn = document.createElement('button')
+    cancelBtn.textContent = 'Cancel'
+    cancelBtn.style.cssText = `
+      background: #2a2a2a;
+      border: 1px solid #666;
+      border-radius: 6px;
+      padding: 10px 20px;
+      color: #e0e0e0;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    `
+    cancelBtn.addEventListener('click', () => {
+      modal.remove()
+    })
+
+    const continueBtn = document.createElement('button')
+    continueBtn.textContent = 'Continue Chat'
+    continueBtn.style.cssText = `
+      background: linear-gradient(135deg, #ff8c00 0%, #ff6b00 100%);
+      border: none;
+      border-radius: 6px;
+      padding: 10px 20px;
+      color: white;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    `
+    continueBtn.addEventListener('click', async () => {
+      const newText = textarea.value.trim()
+      if (!newText) {
+        alert('Message cannot be empty')
+        return
+      }
+
+      // Update the edited message text in the data store only
+      chatMessages = chatMessages.slice(0, messageIndex + 1)
+      chatMessages[messageIndex].text = newText
+
+      // Remove DOM elements after the edited message without clearing previous ones
+      const allMessages = chatContainerEl.querySelectorAll('[data-message-id]')
+      allMessages.forEach((el, index) => {
+        if (index > messageIndex) {
+          el.remove()
+        }
+      })
+
+      // Update the edited message in the DOM (just the bubble text)
+      const editedBubble = messageEl.querySelector('.message-bubble')
+      if (editedBubble) {
+        editedBubble.textContent = newText
+      }
+
+      modal.remove()
+
+      // Send the edited message to continue conversation
+      await sendEditedMessage(newText)
+    })
+
+    buttons.appendChild(cancelBtn)
+    buttons.appendChild(continueBtn)
+    dialog.appendChild(title)
+    dialog.appendChild(textarea)
+    dialog.appendChild(buttons)
+    modal.appendChild(dialog)
+    document.body.appendChild(modal)
+
+    // Focus textarea
+    setTimeout(() => textarea.focus(), 100)
+
+    // Close on escape
+    modal.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        modal.remove()
+      }
+    })
+  }
   function showTypingIndicator() {
     // Remove existing typing indicator if any
     hideTypingIndicator()
@@ -577,6 +752,70 @@ function initializeApp() {
     }
   }
 
+  // Send an edited message (used when continuing from edited point)
+  async function sendEditedMessage(message: string) {
+    if (!message) return
+
+    // Check if PDFs are uploaded and cached
+    if (files.length === 0) {
+      addChatMessage('Please upload some PDF files first to enable AI analysis.', false)
+      return
+    }
+
+    // Check if cache is ready
+    if (!appState.cacheKey) {
+      addChatMessage('⏳ Please wait for documents to finish processing before querying...', false)
+      return
+    }
+
+    // Check if processing
+    if (appState.isProcessing) {
+      addChatMessage('Please wait, I\'m processing your previous request...', false)
+      return
+    }
+
+    try {
+      appState.isProcessing = true
+
+      // Extract persona and task from message, or use defaults
+      const persona = appState.currentPersona
+      const task = message
+
+      // Call Gemini analysis - use typing indicator for AI processing
+      showTypingIndicator()
+      const analysisResponse = await analyzeChunksWithGemini(
+        appState.cacheKey,
+        persona,
+        task,
+        5, // k
+        5  // max_chunks_to_analyze
+      )
+
+      hideTypingIndicator()
+
+      // Format and display response as a single markdown message
+      if (analysisResponse.gemini_analysis && analysisResponse.gemini_analysis.length > 0) {
+        const geminiText = analysisResponse.gemini_analysis[0].gemini_analysis
+        
+        // Display entire Gemini response as one message with markdown formatting
+        addChatMessage(geminiText, false)
+      } else {
+        addChatMessage('I analyzed your documents but couldn\'t generate insights. Please try rephrasing your question.', false)
+      }
+
+    } catch (error) {
+      console.error('Error in sendEditedMessage:', error)
+      hideLoadingOverlay()
+      hideTypingIndicator()
+      addChatMessage(
+        `❌ Error: ${error instanceof Error ? error.message : 'Failed to analyze documents. Make sure the backend server is running on http://localhost:8080'}`,
+        false
+      )
+    } finally {
+      appState.isProcessing = false
+    }
+  }
+
   function rebuildFileList() {
     fileListElm.innerHTML = ''
     if (files.length === 0) {
@@ -714,7 +953,6 @@ function initializeApp() {
 
     // Show message for uploaded files
     if (uniqueNewFiles.length > 0) {
-      addChatMessage(`📄 Uploaded ${uniqueNewFiles.length} file(s) successfully!`, false)
       
       // Upload to backend and cache
       try {
@@ -733,7 +971,6 @@ function initializeApp() {
         })
         
         hideLoadingOverlay()
-        addChatMessage('✅ Documents are ready! You can now ask questions about them.', false)
       } catch (error) {
         console.error('Error caching PDFs:', error)
         hideLoadingOverlay()
