@@ -58,9 +58,11 @@ function initializeApp() {
   const newMindmapBtn = document.getElementById('newMindmapBtn') as HTMLButtonElement | null
   const newPodcastBtn = document.getElementById('newPodcastBtn') as HTMLButtonElement | null
 
+  const tabsContainerEl = document.getElementById('tabsContainer') as HTMLDivElement | null
+
   if (!fileInput || !fileListEl || !chatContainer || !chatInput || !sendButton || 
       !popupModal || !popupTitle || !popupBody || !closePopup || 
-      !newChatBtn || !newMindmapBtn || !newPodcastBtn) {
+      !newChatBtn || !newMindmapBtn || !newPodcastBtn || !tabsContainerEl) {
     console.error('❌ Renderer: missing expected DOM elements', {
       fileInput: !!fileInput,
       fileListEl: !!fileListEl,
@@ -73,7 +75,8 @@ function initializeApp() {
       closePopup: !!closePopup,
       newChatBtn: !!newChatBtn,
       newMindmapBtn: !!newMindmapBtn,
-      newPodcastBtn: !!newPodcastBtn
+      newPodcastBtn: !!newPodcastBtn,
+      tabsContainerEl: !!tabsContainerEl
     })
     return
   }
@@ -84,13 +87,12 @@ function initializeApp() {
   const fileListElm = fileListEl!
   const chatContainerEl = chatContainer!
   const chatInputEl = chatInput!
-  const tabsContainerEl = document.getElementById('tabsContainer') as HTMLDivElement
 
   let files: FileEntry[] = []
   let currentPlatform: Platform | null = null
   let selectedFileIndex: number | null = null
   let chatMessages: ChatMessage[] = []
-  
+
   // Tab system
   interface ChatTab {
     id: string
@@ -105,6 +107,70 @@ function initializeApp() {
   let tabs: Map<string, ChatTab> = new Map()
   let activeTabId: string = 'default'
   let tabCounter: number = 1
+  let draggedTabId: string | null = null
+
+  const handleTabWheel = (event: WheelEvent) => {
+    event.preventDefault()
+    
+    let delta = 0
+    // Prioritize X axis if it's significant (trackpad/shift+wheel), otherwise use Y (mouse wheel)
+    if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
+      delta = event.deltaX
+    } else {
+      delta = event.deltaY
+    }
+
+    // Normalize delta based on mode
+    if (event.deltaMode === 1) { // DOM_DELTA_LINE
+      delta *= 40
+    } else if (event.deltaMode === 2) { // DOM_DELTA_PAGE
+      delta *= tabsContainerEl.clientWidth
+    }
+
+    tabsContainerEl.scrollLeft += delta
+  }
+
+  tabsContainerEl.addEventListener('wheel', handleTabWheel, { passive: false })
+
+  tabsContainerEl.addEventListener('dragover', (event) => {
+    if (!draggedTabId) {
+      return
+    }
+
+    event.preventDefault()
+    if (event.target instanceof HTMLElement && event.target.closest('.tab')) {
+      return
+    }
+
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'move'
+    }
+  })
+
+  tabsContainerEl.addEventListener('drop', (event) => {
+    if (!draggedTabId) {
+      return
+    }
+
+    if (event.target instanceof HTMLElement && event.target.closest('.tab')) {
+      return
+    }
+
+    event.preventDefault()
+    const orderedTabs = Array.from(tabs.values())
+    const draggedIndex = orderedTabs.findIndex(tab => tab.id === draggedTabId)
+
+    if (draggedIndex === -1) {
+      draggedTabId = null
+      return
+    }
+
+    const [draggedTab] = orderedTabs.splice(draggedIndex, 1)
+    orderedTabs.push(draggedTab)
+    tabs = new Map(orderedTabs.map(tab => [tab.id, tab]))
+    draggedTabId = null
+    renderTabs()
+  })
 
   // Initialize default tab
   tabs.set('default', {
@@ -148,6 +214,32 @@ function initializeApp() {
     switchToTab(tabId)
     renderTabs()
     return tabId
+  }
+
+  function reorderTabs(draggedId: string, targetId: string, dropBefore: boolean) {
+    if (draggedId === targetId) {
+      return
+    }
+
+    const orderedTabs = Array.from(tabs.values())
+    const draggedIndex = orderedTabs.findIndex(tab => tab.id === draggedId)
+
+    if (draggedIndex === -1) {
+      return
+    }
+
+    const [draggedTab] = orderedTabs.splice(draggedIndex, 1)
+    const targetIndex = orderedTabs.findIndex(tab => tab.id === targetId)
+
+    if (targetIndex === -1) {
+      orderedTabs.push(draggedTab)
+    } else {
+      const insertIndex = dropBefore ? targetIndex : targetIndex + 1
+      orderedTabs.splice(insertIndex, 0, draggedTab)
+    }
+
+    tabs = new Map(orderedTabs.map(tab => [tab.id, tab]))
+    renderTabs()
   }
 
   function switchToTab(tabId: string) {
@@ -214,10 +306,13 @@ function initializeApp() {
     tabsContainerEl.innerHTML = ''
 
     // Create tabs
-    Array.from(tabs.values()).forEach(tab => {
+    for (const tab of tabs.values()) {
       const tabEl = document.createElement('div')
       tabEl.className = `tab ${tab.id === activeTabId ? 'active' : ''}`
-      tabEl.setAttribute('data-tab-id', tab.id)
+      tabEl.dataset.tabId = tab.id
+      if (tabs.size > 1) {
+        tabEl.setAttribute('draggable', 'true')
+      }
       
       const iconEl = document.createElement('span')
       iconEl.className = 'tab-icon'
@@ -245,8 +340,59 @@ function initializeApp() {
         }
       })
 
+      tabEl.addEventListener('dragstart', (event) => {
+        if (tabs.size <= 1) {
+          return
+        }
+
+        draggedTabId = tab.id
+        tabEl.classList.add('dragging')
+        event.dataTransfer?.setData('text/plain', tab.id)
+        event.dataTransfer?.setDragImage(tabEl, 20, 20)
+      })
+
+      tabEl.addEventListener('dragend', () => {
+        tabEl.classList.remove('dragging', 'drag-over-before', 'drag-over-after')
+        draggedTabId = null
+      })
+
+      tabEl.addEventListener('dragover', (event) => {
+        if (!draggedTabId || draggedTabId === tab.id) {
+          return
+        }
+
+        event.preventDefault()
+        event.stopPropagation()
+        if (event.dataTransfer) {
+          event.dataTransfer.dropEffect = 'move'
+        }
+
+        const bounds = tabEl.getBoundingClientRect()
+        const dropBefore = event.clientX < bounds.left + bounds.width / 2
+        tabEl.classList.toggle('drag-over-before', dropBefore)
+        tabEl.classList.toggle('drag-over-after', !dropBefore)
+      })
+
+      tabEl.addEventListener('dragleave', () => {
+        tabEl.classList.remove('drag-over-before', 'drag-over-after')
+      })
+
+      tabEl.addEventListener('drop', (event) => {
+        if (!draggedTabId || draggedTabId === tab.id) {
+          return
+        }
+
+        event.preventDefault()
+        event.stopPropagation()
+        const bounds = tabEl.getBoundingClientRect()
+        const dropBefore = event.clientX < bounds.left + bounds.width / 2
+        tabEl.classList.remove('drag-over-before', 'drag-over-after')
+        reorderTabs(draggedTabId, tab.id, dropBefore)
+        draggedTabId = null
+      })
+
       tabsContainerEl.appendChild(tabEl)
-    })
+    }
   }
 
   function clearObjectURLs() {
