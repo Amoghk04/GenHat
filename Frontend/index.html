@@ -28,18 +28,150 @@
       button { padding:8px 12px; font-size:14px }
       #output { margin-top:16px; padding:12px; background:#f4f4f5; border-radius:6px }
 
+      /* Sidebar action buttons */
+      #newChatBtn:hover,
+      #newMindmapBtn:hover,
+      #newPodcastBtn:hover {
+        transform: scale(1.05);
+        box-shadow: 0 4px 16px rgba(255, 140, 0, 0.5);
+      }
+
+      #newChatBtn:active,
+      #newMindmapBtn:active,
+      #newPodcastBtn:active {
+        transform: scale(0.95);
+      }
+
+      /* Chrome-like Tab system styles */
+      .tabs-container {
+        display: flex;
+        gap: 2px;
+        background: #1a1a1a;
+        padding: 0;
+        overflow-x: auto;
+        overflow-y: hidden;
+        align-items: flex-end;
+        height: 44px;
+        scrollbar-width: thin;
+        scrollbar-color: #3a3a3a #1a1a1a;
+      }
+
+      .tabs-container::-webkit-scrollbar {
+        height: 6px;
+      }
+
+      .tabs-container::-webkit-scrollbar-track {
+        background: #1a1a1a;
+      }
+
+      .tabs-container::-webkit-scrollbar-thumb {
+        background: #3a3a3a;
+        border-radius: 3px;
+      }
+
+      .tab {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: #2a2a2a;
+        border: 1px solid #3a3a3a;
+        border-bottom: 1px solid #2a2a2a;
+        border-radius: 24px 24px 0 0;
+        padding: 8px 16px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        font-size: 13px;
+        color: #888;
+        white-space: nowrap;
+        user-select: none;
+        min-width: 100px;
+        max-width: 220px;
+        position: relative;
+      }
+
+      .tab:hover {
+        background: #333;
+        color: #bbb;
+      }
+
+      .tab.active {
+        background: #0d0d0d;
+        border-color: #2a2a2a;
+        color: #e0e0e0;
+        border-bottom: 1px solid #0d0d0d;
+        z-index: 10;
+      }
+
+      .tab-icon {
+        font-size: 16px;
+        flex-shrink: 0;
+      }
+
+      .tab-label {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .tab-close {
+        width: 18px;
+        height: 18px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        border-radius: 3px;
+        font-size: 12px;
+        opacity: 0.6;
+        transition: all 0.2s ease;
+        flex-shrink: 0;
+      }
+
+      .tab-close:hover {
+        opacity: 1;
+        background: rgba(255, 140, 0, 0.2);
+      }
+
+      .tab-close:active {
+        background: rgba(255, 140, 0, 0.4);
+      }
+
+      .add-tab-btn {
+        width: 32px;
+        height: 36px;
+        background: transparent;
+        border: none;
+        border-radius: 0;
+        color: #666;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s ease;
+        font-size: 18px;
+        flex-shrink: 0;
+        margin-left: 4px;
+      }
+
+      .add-tab-btn:hover {
+        color: #ff8c00;
+        background: rgba(255, 140, 0, 0.1);
+      }
+
       /* File card styles */
       .file-card {
         background: #2a2a2a;
         border: 1px solid #3a3a3a;
         border-radius: 8px;
-        padding: 12px;
-        margin-bottom: 12px;
+        padding: 8px;
+        margin-bottom: 8px;
         cursor: pointer;
         transition: all 0.2s ease;
         display: flex;
         flex-direction: column;
-        gap: 8px;
+        gap: 4px;
+        flex-shrink: 0;
       }
 
       .file-card:hover {
@@ -56,7 +188,7 @@
 
       .file-thumbnail {
         width: 100%;
-        height: 120px;
+        height: 80px;
         background: #1a1a1a;
         border-radius: 6px;
         display: flex;
@@ -65,6 +197,7 @@
         overflow: hidden;
         border: 1px solid #3a3a3a;
         position: relative;
+        flex-shrink: 0;
       }
 
       .file-thumbnail canvas {
@@ -123,12 +256,12 @@
       .file-info {
         display: flex;
         flex-direction: column;
-        gap: 4px;
+        gap: 2px;
       }
 
       .file-name {
         color: #e0e0e0;
-        font-size: 13px;
+        font-size: 12px;
         font-weight: 600;
         white-space: nowrap;
         overflow: hidden;
@@ -137,7 +270,7 @@
 
       .file-meta {
         color: #888;
-        font-size: 11px;
+        font-size: 10px;
       }
 
       #fileList {
@@ -169,6 +302,39 @@
 
       #chatContainer::-webkit-scrollbar-thumb:hover {
         background: #ff6b00;
+      }
+
+      /* Sidebar Tab Styles */
+      .sidebar-tab {
+        position: relative;
+        flex: 1;
+        min-width: 70px;
+        padding: 8px 12px;
+        background: transparent;
+        border: none;
+        border-bottom: 2px solid transparent;
+        color: #888;
+        font-weight: 600;
+        font-size: 12px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+
+      .sidebar-tab:hover {
+        color: #ff8c00;
+      }
+
+      .sidebar-tab.active {
+        color: #ff8c00;
+        border-bottom-color: #ff8c00;
+      }
+
+      .sidebar-tab-content {
+        display: none !important;
+      }
+
+      .sidebar-tab-content.active {
+        display: flex !important;
       }
 
       /* Message bubble with copy button */
@@ -681,31 +847,86 @@
   </head>
   <body>
     <main style="display: flex; gap: 20px; height: 100vh; padding: 20px; box-sizing: border-box;">
-      <!-- Left Section: Files Sidebar -->
-      <div style="width: 300px; display: flex; flex-direction: column; background: #0d0d0d; border: 1px solid #2a2a2a; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);">
-        <img src="assets/genhat-removebg-preview.png" alt="GenHat Logo" style="width: 300px; margin: 0 0 8px 0;" />
-        
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
-          <h3 style="margin: 0; font-size: 16px; font-weight: 600; color: #e0e0e0;">Files</h3>
-          <label for="fileInput" style="cursor: pointer; width: 32px; height: 32px; background: #ff8c00; color: white; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 300; transition: background 0.2s ease;" title="Upload PDFs">+</label>
-          <input id="fileInput" type="file" accept="application/pdf" multiple style="display: none;" />
-        </div>
-        
-        <ul id="fileList" style="list-style: none; padding: 8px; margin: 0; flex: 1; overflow-y: auto; border: 1px solid #2a2a2a; border-radius: 6px; background: #1a1a1a;"></ul>
+      <!-- Left Sidebar: Action Buttons -->
+      <div style="width: 60px; display: flex; flex-direction: column; gap: 12px; justify-content: flex-start;">
+        <button id="newChatBtn" style="width: 100%; height: 60px; background: linear-gradient(135deg, #ff8c00 0%, #ff6b00 100%); border: none; border-radius: 8px; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease; box-shadow: 0 2px 8px rgba(255, 140, 0, 0.3);" title="New Chat">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+          </svg>
+        </button>
+        <button id="newMindmapBtn" style="width: 100%; height: 60px; background: linear-gradient(135deg, #ff8c00 0%, #ff6b00 100%); border: none; border-radius: 8px; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease; box-shadow: 0 2px 8px rgba(255, 140, 0, 0.3);" title="New Mind Map">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="1"></circle>
+            <circle cx="19" cy="12" r="1"></circle>
+            <circle cx="5" cy="12" r="1"></circle>
+            <circle cx="12" cy="5" r="1"></circle>
+            <circle cx="12" cy="19" r="1"></circle>
+            <circle cx="17.66" cy="17.66" r="1"></circle>
+            <circle cx="6.34" cy="6.34" r="1"></circle>
+            <line x1="12" y1="12" x2="19" y2="12"></line>
+            <line x1="12" y1="12" x2="5" y2="12"></line>
+            <line x1="12" y1="12" x2="12" y2="5"></line>
+            <line x1="12" y1="12" x2="12" y2="19"></line>
+            <line x1="12" y1="12" x2="17.66" y2="17.66"></line>
+            <line x1="12" y1="12" x2="6.34" y2="6.34"></line>
+          </svg>
+        </button>
+        <button id="newPodcastBtn" style="width: 100%; height: 60px; background: linear-gradient(135deg, #ff8c00 0%, #ff6b00 100%); border: none; border-radius: 8px; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease; box-shadow: 0 2px 8px rgba(255, 140, 0, 0.3);" title="New Podcast">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+            <line x1="12" y1="19" x2="12" y2="23"></line>
+            <line x1="8" y1="23" x2="16" y2="23"></line>
+          </svg>
+        </button>
       </div>
 
-      <!-- Right Section: Chat Window -->
-      <div style="flex: 1; display: flex; flex-direction: column; gap: 12px;">
-        <!-- Chat Messages Area -->
-        <div id="chatContainer" style="flex: 1; background: #0d0d0d; border: 1px solid #2a2a2a; border-radius: 8px; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; max-height: calc(100vh - 100px);">
-          <div style="text-align: center; color: #666; margin-top: 20px;">
-            <div style="font-size: 48px; margin-bottom: 12px;">💬</div>
-            <p style="font-size: 16px;">Start a conversation...</p>
-          </div>
+      <!-- Middle Section: Files Sidebar -->
+      <div style="width: 300px; display: flex; flex-direction: column; max-height: calc(100vh - 40px); background: #0d0d0d; border: 1px solid #2a2a2a; border-radius: 8px; padding: 16px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);">
+        <!-- Logo -->
+        <div style="margin-bottom: 16px;">
+          <img src="assets/genhat-hori-left.png" alt="GenHat Logo" style="width: 100%; height: auto;" />
         </div>
+        
+        <!-- Tabs for Files, Mindmap, Podcast -->
+        <div style="display: flex; gap: 2px; margin-bottom: 12px; border-bottom: 1px solid #2a2a2a; overflow-x: auto;">
+          <button class="sidebar-tab active" data-tab="files">📄 Files</button>
+          <button class="sidebar-tab" data-tab="mindmap">🧠 Mindmap</button>
+          <button class="sidebar-tab" data-tab="podcast">🎙️ Podcast</button>
+        </div>
+        
+        <!-- Files Tab Content -->
+        <div class="sidebar-tab-content active" data-tab="files" style="flex-direction: column; flex: 1; min-height: 0; overflow: hidden;">
+          <label for="fileInput" style="cursor: pointer; width: 93%; padding: 10px; background: #ff8c00; color: white; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; transition: all 0.2s ease; border: none; margin-bottom: 8px; flex-shrink: 0;" title="Upload PDFs">📤 Upload PDF</label>
+          <input id="fileInput" type="file" accept="application/pdf" multiple style="display: none;" />
+          <ul id="fileList" style="list-style: none; padding: 4px; margin: 0; flex: 1; overflow-y: auto; border: 1px solid #2a2a2a; border-radius: 6px; background: #1a1a1a; min-height: 0;"></ul>
+        </div>
+        
+        <!-- Mindmap Tab Content -->
+        <div class="sidebar-tab-content" data-tab="mindmap" style="flex-direction: column; flex: 1; min-height: 0; overflow: hidden;">
+          <ul id="mindmapList" style="list-style: none; padding: 4px; margin: 0; flex: 1; overflow-y: auto; border: 1px solid #2a2a2a; border-radius: 6px; background: #1a1a1a; min-height: 0;">
+            <div style="text-align: center; color: #666; padding: 20px;">No mindmaps created yet</div>
+          </ul>
+        </div>
+        
+        <!-- Podcast Tab Content -->
+        <div class="sidebar-tab-content" data-tab="podcast" style="flex-direction: column; flex: 1; min-height: 0; overflow: hidden;">
+          <ul id="podcastList" style="list-style: none; padding: 4px; margin: 0; flex: 1; overflow-y: auto; border: 1px solid #2a2a2a; border-radius: 6px; background: #1a1a1a; min-height: 0;">
+            <div style="text-align: center; color: #666; padding: 20px;">No podcasts created yet</div>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Right Section: Chat Window with Tabs -->
+      <div style="flex: 1; display: flex; flex-direction: column; gap: 0;">
+        <!-- Tab Bar -->
+        <div class="tabs-container" id="tabsContainer"></div>
+
+        <!-- Chat Messages Area -->
+        <div id="chatContainer" style="flex: 1; background: #0d0d0d; border: 1px solid #2a2a2a; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; max-height: calc(100vh - 160px);"></div>
 
         <!-- Chat Input Area -->
-        <div style="background: #0d0d0d; border: 1px solid #2a2a2a; border-radius: 8px; padding: 12px; display: flex; gap: 8px; align-items: center;">
+        <div style="background: #0d0d0d; border: 1px solid #2a2a2a; border-radius: 0 0 8px 8px; padding: 12px; display: flex; gap: 8px; align-items: center; border-top: 1px solid #2a2a2a;">
           <input 
             id="chatInput" 
             type="text" 

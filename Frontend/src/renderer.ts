@@ -53,9 +53,14 @@ function initializeApp() {
   const popupBody = document.getElementById('popupBody') as HTMLDivElement | null
   const closePopup = document.getElementById('closePopup') as HTMLButtonElement | null
   
+  // Sidebar action buttons
+  const newChatBtn = document.getElementById('newChatBtn') as HTMLButtonElement | null
+  const newMindmapBtn = document.getElementById('newMindmapBtn') as HTMLButtonElement | null
+  const newPodcastBtn = document.getElementById('newPodcastBtn') as HTMLButtonElement | null
 
   if (!fileInput || !fileListEl || !chatContainer || !chatInput || !sendButton || 
-      !popupModal || !popupTitle || !popupBody || !closePopup) {
+      !popupModal || !popupTitle || !popupBody || !closePopup || 
+      !newChatBtn || !newMindmapBtn || !newPodcastBtn) {
     console.error('❌ Renderer: missing expected DOM elements', {
       fileInput: !!fileInput,
       fileListEl: !!fileListEl,
@@ -65,7 +70,10 @@ function initializeApp() {
       popupModal: !!popupModal,
       popupTitle: !!popupTitle,
       popupBody: !!popupBody,
-      closePopup: !!closePopup
+      closePopup: !!closePopup,
+      newChatBtn: !!newChatBtn,
+      newMindmapBtn: !!newMindmapBtn,
+      newPodcastBtn: !!newPodcastBtn
     })
     return
   }
@@ -76,11 +84,38 @@ function initializeApp() {
   const fileListElm = fileListEl!
   const chatContainerEl = chatContainer!
   const chatInputEl = chatInput!
+  const tabsContainerEl = document.getElementById('tabsContainer') as HTMLDivElement
 
   let files: FileEntry[] = []
   let currentPlatform: Platform | null = null
   let selectedFileIndex: number | null = null
   let chatMessages: ChatMessage[] = []
+  
+  // Tab system
+  interface ChatTab {
+    id: string
+    name: string
+    icon: string
+    type: 'chat' | 'mindmap' | 'podcast'
+    messages: ChatMessage[]
+    platform: Platform | null
+    isTyping: boolean
+  }
+
+  let tabs: Map<string, ChatTab> = new Map()
+  let activeTabId: string = 'default'
+  let tabCounter: number = 1
+
+  // Initialize default tab
+  tabs.set('default', {
+    id: 'default',
+    name: 'Chat',
+    icon: '💬',
+    type: 'chat',
+    messages: [],
+    platform: null,
+    isTyping: false
+  })
   
   // Backend state
   const appState: AppState = {
@@ -92,6 +127,127 @@ function initializeApp() {
   }
 
   let currentPDFViewer: PDFViewer | null = null
+
+  // Tab management functions
+  function createNewTab(type: 'chat' | 'mindmap' | 'podcast'): string {
+    const tabId = `tab-${tabCounter++}`
+    const icon = type === 'chat' ? '💬' : type === 'mindmap' ? '🧠' : '🎙️'
+    const typeName = type === 'chat' ? 'Chat' : type === 'mindmap' ? 'Mind Map' : 'Podcast'
+    const tabName = `${typeName} ${tabs.size}`
+    
+    tabs.set(tabId, {
+      id: tabId,
+      name: tabName,
+      icon,
+      type,
+      messages: [],
+      platform: type === 'chat' ? null : (type as Platform),
+      isTyping: false
+    })
+
+    switchToTab(tabId)
+    renderTabs()
+    return tabId
+  }
+
+  function switchToTab(tabId: string) {
+    const tab = tabs.get(tabId)
+    if (!tab) return
+
+    // Save current tab's messages before switching
+    const currentTab = tabs.get(activeTabId)
+    if (currentTab) {
+      currentTab.messages = chatMessages
+      currentTab.platform = currentPlatform
+      currentTab.isTyping = !!document.getElementById('typingIndicator')
+    }
+
+    // Load new tab
+    activeTabId = tabId
+    chatMessages = [...tab.messages] // Create a copy to avoid mutations
+    currentPlatform = tab.platform
+    
+    // Update UI - clear and rebuild chat container
+    chatContainerEl.innerHTML = ''
+    if (chatMessages.length === 0 && !tab.isTyping) {
+      const welcome = document.createElement('div')
+      welcome.style.cssText = 'text-align: center; color: #666; margin-top: 20px;'
+      const emoji = tab.type === 'mindmap' ? '🧠' : tab.type === 'podcast' ? '🎙️' : '💬'
+      welcome.innerHTML = `<div style="font-size: 48px; margin-bottom: 12px;">${emoji}</div><p style="font-size: 16px;">Start a conversation...</p>`
+      chatContainerEl.appendChild(welcome)
+    } else {
+      // Rebuild messages for this tab
+      const tempMessages = chatMessages
+      chatMessages = []
+      tempMessages.forEach(msg => {
+        addChatMessage(msg.text, msg.isUser, msg.branchFrom)
+      })
+      
+      // Restore typing indicator if it was active
+      if (tab.isTyping) {
+        showTypingIndicator()
+      }
+    }
+
+    renderTabs()
+  }
+
+  function closeTab(tabId: string) {
+    if (tabs.size <= 1) return // Keep at least one tab
+    
+    tabs.delete(tabId)
+    
+    if (activeTabId === tabId) {
+      // Switch to first remaining tab
+      const remainingTabs = Array.from(tabs.keys())
+      activeTabId = remainingTabs[0] || 'default'
+      switchToTab(activeTabId)
+    } else {
+      renderTabs()
+    }
+  }
+
+  function renderTabs() {
+    if (!tabsContainerEl) return
+
+    // Clear existing tabs
+    tabsContainerEl.innerHTML = ''
+
+    // Create tabs
+    Array.from(tabs.values()).forEach(tab => {
+      const tabEl = document.createElement('div')
+      tabEl.className = `tab ${tab.id === activeTabId ? 'active' : ''}`
+      tabEl.setAttribute('data-tab-id', tab.id)
+      
+      const iconEl = document.createElement('span')
+      iconEl.className = 'tab-icon'
+      iconEl.textContent = tab.icon
+      
+      const labelEl = document.createElement('span')
+      labelEl.className = 'tab-label'
+      labelEl.textContent = tab.name
+      
+      const closeEl = document.createElement('div')
+      closeEl.className = 'tab-close'
+      closeEl.innerHTML = '×'
+      
+      tabEl.appendChild(iconEl)
+      tabEl.appendChild(labelEl)
+      if (tabs.size > 1) {
+        tabEl.appendChild(closeEl)
+      }
+      
+      tabEl.addEventListener('click', (e) => {
+        if ((e.target as HTMLElement).classList.contains('tab-close')) {
+          closeTab(tab.id)
+        } else {
+          switchToTab(tab.id)
+        }
+      })
+
+      tabsContainerEl.appendChild(tabEl)
+    })
+  }
 
   function clearObjectURLs() {
     for (const f of files) {
@@ -558,6 +714,12 @@ function initializeApp() {
 
     chatContainerEl.appendChild(typingEl)
     chatContainerEl.scrollTop = chatContainerEl.scrollHeight
+    
+    // Set isTyping state for current tab
+    const tab = tabs.get(activeTabId)
+    if (tab) {
+      tab.isTyping = true
+    }
   }
 
   // Hide typing indicator
@@ -565,6 +727,12 @@ function initializeApp() {
     const existing = document.getElementById('typingIndicator')
     if (existing) {
       existing.remove()
+    }
+    
+    // Clear isTyping state for current tab
+    const tab = tabs.get(activeTabId)
+    if (tab) {
+      tab.isTyping = false
     }
   }
 
@@ -950,14 +1118,54 @@ function initializeApp() {
     fileInput.value = ''
   })
 
+  // Initialize tab system
+  renderTabs()
+
   // Chat send button
   sendButton!.addEventListener('click', sendMessage)
+
+  // Sidebar action buttons
+  newChatBtn!.addEventListener('click', () => {
+    const tabId = createNewTab('chat')
+    addChatMessage('Start a new conversation...', false)
+  })
+
+  newMindmapBtn!.addEventListener('click', () => {
+    const tabId = createNewTab('mindmap')
+    addChatMessage('🧠 Mind Map Mode - Describe the concepts you want to map, and I\'ll create a visual mind map from your documents.', false)
+  })
+
+  newPodcastBtn!.addEventListener('click', () => {
+    const tabId = createNewTab('podcast')
+    addChatMessage('🎙️ Podcast Mode - I can create or discuss podcast content based on your documents. What would you like to explore?', false)
+  })
 
   // Chat input enter key
   chatInputEl.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
       sendMessage()
     }
+  })
+
+  // Sidebar tab switching
+  const sidebarTabs = document.querySelectorAll('.sidebar-tab') as NodeListOf<HTMLButtonElement>
+  const tabContents = document.querySelectorAll('.sidebar-tab-content') as NodeListOf<HTMLDivElement>
+  
+  sidebarTabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      const tabName = tab.getAttribute('data-tab')
+      
+      // Remove active from all tabs and contents
+      sidebarTabs.forEach(t => t.classList.remove('active'))
+      tabContents.forEach(c => c.classList.remove('active'))
+      
+      // Add active to clicked tab and corresponding content
+      tab.classList.add('active')
+      const activeContent = document.querySelector(`.sidebar-tab-content[data-tab="${tabName}"]`)
+      if (activeContent) {
+        activeContent.classList.add('active')
+      }
+    })
   })
 
   // Close popup
