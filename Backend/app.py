@@ -17,6 +17,7 @@ from concurrent.futures import ThreadPoolExecutor
 from src.extract import PDFHeadingExtractor
 from src.extract.content_chunker import extract_chunks_with_headings
 from src.retrieval.hybrid_retriever import build_hybrid_index, search_top_k_hybrid
+from src.retrieval.vector_store import load_embeddings, save_embeddings
 from src.output.formatter import format_bm25_output
 from src.utils.file_utils import load_json, save_json, ensure_dir
 from pydantic import BaseModel
@@ -24,10 +25,12 @@ from typing import Optional
 from hashlib import sha256
 from datetime import datetime, timezone
 import re
+import numpy as np
 import shutil
 from dotenv import load_dotenv
 import platform
 import logging
+from prompt_cache import PromptCache
 
 load_dotenv()
 
@@ -57,6 +60,10 @@ LOG_DIR = TEMP_DIR / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 LOG_FILE = LOG_DIR / f"genhat_{datetime.now().strftime('%Y%m%d')}.log"
 
+# Initialize Prompt Cache
+CACHE_DIR = TEMP_DIR / "cache"
+prompt_cache = PromptCache(CACHE_DIR)
+
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
@@ -68,7 +75,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-logger.info(f"🚀 GenHat Backend starting...")
+logger.info("🚀 GenHat Backend starting...")
 logger.info(f"📁 OS: {platform.system()}")
 logger.info(f"📁 Temp directory: {TEMP_DIR}")
 logger.info(f"📝 Log file: {LOG_FILE}")
@@ -290,7 +297,22 @@ async def cache_pdfs(project_name: str = Form(""), files: List[UploadFile] = Fil
         if not new_pdf_paths and existing_chunks:
             try:
                 detected_domain = detect_domain("general", "general")
-                retriever = build_hybrid_index(existing_chunks, domain=detected_domain)
+                # Attempt to load precomputed embeddings for this project
+                loaded = load_embeddings(BASE_DATA_DIR, safe_name)
+                if loaded:
+                    chunk_ids_loaded, emb_array, model_name = loaded
+                    # Reorder chunks to match stored embedding order
+                    id_map = {c.get('chunk_id'): c for c in existing_chunks if c.get('chunk_id')}
+                    ordered_chunks = [id_map[cid] for cid in chunk_ids_loaded if cid in id_map]
+                    if len(ordered_chunks) == emb_array.shape[0]:
+                        print(f"🔄 Reusing persisted embeddings for project '{safe_name}' (chunks: {len(ordered_chunks)})")
+                        retriever = build_hybrid_index(ordered_chunks, domain=detected_domain, embedding_model=model_name, precomputed_embeddings=emb_array)
+                        existing_chunks = ordered_chunks  # align cache ordering
+                    else:
+                        print("⚠️ Embedding file mismatch; falling back to rebuild.")
+                        retriever = build_hybrid_index(existing_chunks, domain=detected_domain)
+                else:
+                    retriever = build_hybrid_index(existing_chunks, domain=detected_domain)
                 pdf_cache[cache_key] = {
                     "retriever": retriever,
                     "chunks": existing_chunks,
@@ -371,7 +393,9 @@ def process_pdfs_background(cache_key: str, pdf_files: List[str], temp_dir: Opti
     """Synchronous processing run in background task with parallel PDF extraction."""
     try:
         logger.info(f"🔄 Processing {len(pdf_files)} PDFs in parallel for project '{project_name}'")
-        all_chunks = list(existing_chunks)
+        # Separate existing vs new for potential incremental embedding update
+        existing_chunks_original = list(existing_chunks)
+        new_chunks: List[Dict[str, Any]] = []
 
         # Initialize progress tracking for each file
         total_files = len(pdf_files)
@@ -411,7 +435,7 @@ def process_pdfs_background(cache_key: str, pdf_files: List[str], temp_dir: Opti
                     file_progress[file_name]["progress"] = 25
                     
                     chunks = future.result()
-                    all_chunks.extend(chunks)
+                    new_chunks.extend(chunks)
                     
                     # Update progress to completed
                     file_progress[file_name]["progress"] = 100
@@ -429,7 +453,7 @@ def process_pdfs_background(cache_key: str, pdf_files: List[str], temp_dir: Opti
                     if cache_key in pdf_cache:
                         pdf_cache[cache_key]["file_progress"] = file_progress
 
-        if not all_chunks:
+        if not new_chunks and not existing_chunks_original:
             # Nothing extracted – store placeholder
             save_project_state(project_name, {**existing_meta, "files": existing_meta.get("files", []) + new_files_meta, "domain": "general"}, [])
             pdf_cache[cache_key] = {
@@ -445,26 +469,78 @@ def process_pdfs_background(cache_key: str, pdf_files: List[str], temp_dir: Opti
             return
 
         detected_domain = detect_domain("general", "general")
+        merged_files_meta = existing_meta.get("files", []) + new_files_meta
+
+        incremental_used = False
+        retriever = None
+        all_chunks_ordered: List[Dict[str, Any]] = []
         try:
-            retriever = build_hybrid_index(all_chunks, domain=detected_domain)
+            # Attempt incremental only if we have both existing and new chunks
+            if existing_chunks_original and new_chunks:
+                loaded = load_embeddings(BASE_DATA_DIR, project_name)
+                if loaded:
+                    loaded_ids, loaded_embs, loaded_model = loaded
+                    id_map_existing = {c.get('chunk_id'): c for c in existing_chunks_original if c.get('chunk_id')}
+                    reordered_existing = [id_map_existing[cid] for cid in loaded_ids if cid in id_map_existing]
+                    if len(reordered_existing) == loaded_embs.shape[0]:
+                        from src.retrieval.hybrid_retriever import HybridRetriever
+                        temp_retriever = HybridRetriever(domain=detected_domain, embedding_model=loaded_model)
+                        new_weighted_texts = [temp_retriever.weighted_text_representation(c) for c in new_chunks]
+                        if temp_retriever.embedding_model:
+                            new_embs = temp_retriever.embedding_model.encode(new_weighted_texts, show_progress_bar=False)
+                            merged_embs = np.vstack([loaded_embs, new_embs])
+                            all_chunks_ordered = reordered_existing + new_chunks
+                            retriever = build_hybrid_index(all_chunks_ordered, domain=detected_domain, embedding_model=loaded_model, precomputed_embeddings=merged_embs)
+                            try:
+                                merged_ids = [c.get('chunk_id') for c in all_chunks_ordered if c.get('chunk_id')]
+                                if len(merged_ids) == merged_embs.shape[0]:
+                                    save_embeddings(BASE_DATA_DIR, project_name, merged_ids, merged_embs, loaded_model)
+                                    print(f"💾 Incrementally updated embeddings (old {loaded_embs.shape[0]} + new {new_embs.shape[0]}) for '{project_name}'")
+                                else:
+                                    print("⚠️ ID/embedding length mismatch after merge; skipping persistence.")
+                            except Exception as persist_err:
+                                print(f"⚠️ Failed incremental embedding persistence: {persist_err}")
+                            incremental_used = True
+                        else:
+                            print("⚠️ Embedding model unavailable for incremental path; full rebuild.")
+                    else:
+                        print("⚠️ Persisted embeddings count mismatch with existing chunks; full rebuild.")
+                else:
+                    print("ℹ️ No persisted embeddings found; performing full rebuild.")
+            # Fallback full rebuild
+            if retriever is None:
+                all_chunks_ordered = existing_chunks_original + new_chunks
+                retriever = build_hybrid_index(all_chunks_ordered, domain=detected_domain)
+                if retriever.chunk_embeddings is not None:
+                    try:
+                        chunk_ids = [c.get('chunk_id') for c in all_chunks_ordered if c.get('chunk_id')]
+                        if len(chunk_ids) == retriever.chunk_embeddings.shape[0]:
+                            save_embeddings(BASE_DATA_DIR, project_name, chunk_ids, retriever.chunk_embeddings, retriever.embedding_model_name)
+                            print(f"💾 Saved embeddings after full rebuild for '{project_name}'")
+                        else:
+                            print("⚠️ Chunk IDs missing during full rebuild persistence.")
+                    except Exception as persist_err:
+                        print(f"⚠️ Failed to persist embeddings (full rebuild): {persist_err}")
         except Exception as e:
             print(f"❌ Index build failed for project {project_name}: {e}")
             retriever = None
+            all_chunks_ordered = existing_chunks_original + new_chunks
 
-        merged_files_meta = existing_meta.get("files", []) + new_files_meta
-        save_project_state(project_name, {**existing_meta, "files": merged_files_meta, "domain": detected_domain}, all_chunks)
+        # Persist project state with new ordering
+        save_project_state(project_name, {**existing_meta, "files": merged_files_meta, "domain": detected_domain}, all_chunks_ordered)
 
         pdf_cache[cache_key] = {
             "retriever": retriever,
-            "chunks": all_chunks,
+            "chunks": all_chunks_ordered,
             "domain": detected_domain,
             "pdf_files": [f["name"] for f in merged_files_meta],
             "project_name": project_name,
             "index_error": retriever is None,
             "file_progress": file_progress,
-            "processing": False
+            "processing": False,
+            "incremental_embeddings": incremental_used
         }
-        logger.info(f"✅ Cached {len(all_chunks)} total chunks for project '{project_name}' (cache key {cache_key})")
+        logger.info(f"✅ Cached {len(all_chunks_ordered)} total chunks for project '{project_name}' (cache key {cache_key}) incremental={incremental_used}")
     except Exception as e:
         logger.error(f"❌ Error processing PDFs for project {project_name}: {e}")
         # Mark all remaining files as error
@@ -601,8 +677,18 @@ async def remove_pdf(
         # Rebuild the index with remaining chunks
         detected_domain = detect_domain("general", "general")
         try:
+            # Attempt to reuse stored embeddings only if full match (rare on removal -> prefer rebuild)
             retriever = build_hybrid_index(filtered_chunks, domain=detected_domain)
             print(f"✅ Rebuilt index with {len(filtered_chunks)} chunks")
+            # Persist updated embeddings set
+            if retriever.chunk_embeddings is not None:
+                try:
+                    chunk_ids = [c.get('chunk_id') for c in filtered_chunks if c.get('chunk_id')]
+                    if len(chunk_ids) == retriever.chunk_embeddings.shape[0]:
+                        save_embeddings(BASE_DATA_DIR, safe_name, chunk_ids, retriever.chunk_embeddings, retriever.embedding_model_name)
+                        print(f"💾 Updated persisted embeddings after removal for '{safe_name}'")
+                except Exception as persist_err:
+                    print(f"⚠️ Failed to persist updated embeddings: {persist_err}")
         except Exception as e:
             print(f"❌ Index rebuild failed: {e}")
             retriever = None
@@ -684,7 +770,9 @@ async def query_pdfs(
                     "page_number": chunk.get('page_number', 1),
                     "importance_rank": chunk.get('hybrid_score', 0),
                     "bm25_score": chunk.get('bm25_score', 0),
-                    "embedding_score": chunk.get('embedding_score', 0)
+                    "embedding_score": chunk.get('embedding_score', 0),
+                    "chunk_id": chunk.get('chunk_id'),
+                    "chunk_hash": chunk.get('chunk_hash')
                 }
                 results.append(result)
                 print(f"📄 Result {i+1}: {result['document']} - {result['section_title']}")
@@ -828,30 +916,58 @@ Persona: {persona}
 User Task: {task}
 Domain: {cached_data['domain']}
 
-You will analyze the following aggregated document sections (each clearly delimited). {analysis_prompt}
+You will analyze the following aggregated document sections (each clearly delimited).
 
 STRICT INSTRUCTIONS:
-- Base EVERYTHING ONLY on provided sections. No external knowledge unless it is trivially common-sense.
-- When listing contradictions/inconsistencies, cite the involved Section numbers and their document + page.
-- "Did you know?" facts must be short (<=200 chars each), surprising/valuable, and directly grounded in the text.
-- Provide outputs in markdown format with the following labeled sections:
-  ## Key Insights
-  ## Actionable Recommendations
-  ## Did You Know?
-  ## Contradictions
-  ## Persona Alignment
-  ## Summary
+- Answer the user's task/question directly based on the provided sections.
+- Use some external knowledge unless it is trivially common-sense.
+- Cite the involved Section numbers and their document + page when relevant.
+- Provide outputs in markdown format.
 
 AGGREGATED SECTIONS START
 {sections_blob}
 AGGREGATED SECTIONS END
 """
-        print(f"🤖 Sending aggregated prompt with {use_n} sections to Gemini (single call)...")
-        gemini_text = await call_gemini_api(
-            prompt=contextual_prompt,
-            api_key=os.getenv("VITE_GEMINI_API_KEY"),
-            model=gemini_model
-        )
+        
+        # Calculate chunk hashes for cache verification
+        chunk_hashes = [ch.get('chunk_hash') or hash_bytes(ch.get('content', ch.get('text', '')).encode('utf-8')) for ch in combined]
+        
+        # Check cache
+        project_name = cached_data.get("project_name", "project")
+        cache_context = {
+            "project_name": project_name,
+            "persona": persona,
+            "task": task,
+            "model": gemini_model,
+            "chunk_hashes": chunk_hashes
+        }
+        
+        # Use user query + analysis prompt as the key, not the full contextual prompt
+        # This allows semantic matching on the intent while context verifies the content
+        user_query = f"{persona} {task}. {analysis_prompt}"
+        
+        cached_entry = await asyncio.to_thread(prompt_cache.get, user_query, cache_context)
+        
+        if cached_entry:
+            print(f"✅ Using cached Gemini response (similarity: {cached_entry.get('similarity_score', 1.0):.2%})")
+            gemini_text = cached_entry['response']
+        else:
+            print(f"🤖 Sending aggregated prompt with {use_n} sections to Gemini (single call)...")
+            gemini_text = await call_gemini_api(
+                prompt=contextual_prompt,
+                api_key=os.getenv("VITE_GEMINI_API_KEY"),
+                model=gemini_model
+            )
+            
+            # Cache the response
+            if not gemini_text.startswith("[Gemini"):
+                await asyncio.to_thread(
+                    prompt_cache.set, 
+                    user_query, 
+                    gemini_text, 
+                    cache_context,
+                    {"chunk_count": use_n}
+                )
 
         # Single result structure
         insight_id = uuid.uuid4().hex
@@ -868,7 +984,9 @@ AGGREGATED SECTIONS END
                         "page_number": ch.get('page_number', 1),
                         "hybrid_score": ch.get('hybrid_score', 0),
                         "bm25_score": ch.get('bm25_score', 0),
-                        "embedding_score": ch.get('embedding_score', 0)
+                        "embedding_score": ch.get('embedding_score', 0),
+                        "chunk_id": ch.get('chunk_id'),
+                        "chunk_hash": ch.get('chunk_hash')
                     } for i, ch in enumerate(combined)
                 ],
                 "gemini_analysis": gemini_text,
@@ -908,7 +1026,9 @@ AGGREGATED SECTIONS END
                             "page_number": ch.get('page_number', 1),
                             "hybrid_score": ch.get('hybrid_score', 0),
                             "bm25_score": ch.get('bm25_score', 0),
-                            "embedding_score": ch.get('embedding_score', 0)
+                            "embedding_score": ch.get('embedding_score', 0),
+                            "chunk_id": ch.get('chunk_id'),
+                            "chunk_hash": ch.get('chunk_hash')
                         }
                         for ch in top_chunks
                     ],
@@ -946,7 +1066,9 @@ AGGREGATED SECTIONS END
                     "page_number": ch.get('page_number', 1),
                     "hybrid_score": ch.get('hybrid_score', 0),
                     "bm25_score": ch.get('bm25_score', 0),
-                    "embedding_score": ch.get('embedding_score', 0)
+                    "embedding_score": ch.get('embedding_score', 0),
+                    "chunk_id": ch.get('chunk_id'),
+                    "chunk_hash": ch.get('chunk_hash')
                 }
                 for ch in top_chunks
             ],
@@ -956,13 +1078,6 @@ AGGREGATED SECTIONS END
             },
             "insight_id": insight_id
         }
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"❌ Unexpected error: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Error analyzing chunks with Gemini: {str(e)}")
     except HTTPException:
         raise
     except Exception as e:
@@ -1092,11 +1207,28 @@ Title: <compelling title>
 <narration paragraphs; Dont add the word 'Host'>
 """
 
-        script = await call_gemini_api(
-            prompt=prompt,
-            api_key=os.getenv("VITE_GEMINI_API_KEY"),
-            model=req.gemini_model or GEMINI_DEFAULT_MODEL
-        )
+        # Check cache
+        cache_context = {
+            "type": "podcast",
+            "persona": persona,
+            "job": job,
+            "host": host
+        }
+        
+        cached_entry = await asyncio.to_thread(prompt_cache.get, prompt, cache_context)
+        
+        if cached_entry:
+            print("✅ Using cached podcast script")
+            script = cached_entry['response']
+        else:
+            script = await call_gemini_api(
+                prompt=prompt,
+                api_key=os.getenv("VITE_GEMINI_API_KEY"),
+                model=req.gemini_model or GEMINI_DEFAULT_MODEL
+            )
+            
+            if not script.startswith("[Gemini"):
+                await asyncio.to_thread(prompt_cache.set, prompt, script, cache_context)
         print(script)
         return {
             "metadata": {
@@ -1264,11 +1396,32 @@ Output format (plain text):
 Title: <compelling title>
 {host}: <narration paragraphs>
 """
-        script = await call_gemini_api(
-            prompt=prompt,
-            api_key=os.getenv("VITE_GEMINI_API_KEY"),
-            model=GEMINI_DEFAULT_MODEL
-        )
+        
+        # Check cache
+        cache_context = {
+            "type": "podcast_generation",
+            "project_name": project,
+            "insight_id": req.insight_id,
+            "persona": persona,
+            "job": job,
+            "host": host
+        }
+        
+        cached_entry = await asyncio.to_thread(prompt_cache.get, prompt, cache_context)
+        
+        if cached_entry and not req.regenerate:
+            print("✅ Using cached podcast script for generation")
+            script = cached_entry['response']
+        else:
+            script = await call_gemini_api(
+                prompt=prompt,
+                api_key=os.getenv("VITE_GEMINI_API_KEY"),
+                model=GEMINI_DEFAULT_MODEL
+            )
+            
+            if not script.startswith("[Gemini"):
+                await asyncio.to_thread(prompt_cache.set, prompt, script, cache_context)
+        
         script_path.write_text(script, encoding='utf-8')
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Script generation failed: {e}")

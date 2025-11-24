@@ -79,7 +79,7 @@ export class PDFViewer {
         <div id="pdfCanvasContainer" style="flex: 1; overflow: auto; display: flex; justify-content: center; align-items: flex-start; padding: 20px; background: #1a1a1a;">
           <div style="position: relative; background: white; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
             <canvas id="pdfCanvas"></canvas>
-            <div id="textLayer" style="position: absolute; left: 0; top: 0; right: 0; bottom: 0; overflow: hidden; opacity: 0.2; line-height: 1.0; cursor: text;"></div>
+            <div id="textLayer" class="textLayer" style="position: absolute; left: 0; top: 0; right: 0; bottom: 0; overflow: hidden; opacity: 0.2; line-height: 1.0; cursor: text; text-align: initial;"></div>
           </div>
         </div>
       </div>
@@ -179,32 +179,23 @@ export class PDFViewer {
     container.innerHTML = ''
 
     try {
-      const textContent = await page.getTextContent()
-      
-      // Create text layer div items
-      for (const item of textContent.items) {
-        if ('str' in item && item.str) {
-          const tx = pdfjsLib.Util.transform(
-            viewport.transform,
-            item.transform
-          )
-
-          const style = {
-            left: tx[4] + 'px',
-            top: (tx[5]) + 'px',
-            fontSize: (Math.abs(tx[0]) * this.scale) + 'px',
-            fontFamily: 'monospace',
-            position: 'absolute',
-            userSelect: 'text',
-            color: 'transparent'
-          } as const
-
-          const textDiv = document.createElement('div')
-          textDiv.textContent = item.str
-          Object.assign(textDiv.style, style)
-          container.appendChild(textDiv)
-        }
+      // Use PDF.js built-in text layer renderer for proper metrics and selection
+      const textContent = await page.getTextContent({ disableCombineTextItems: false })
+      const renderTask = pdfjsLib.renderTextLayer({
+        textContent,
+        container,
+        viewport,
+        textDivs: [],
+        enhanceTextSelection: true
+      })
+      if (renderTask && renderTask.promise) {
+        await renderTask.promise
       }
+
+      // Make the glyphs barely visible but keep native selection highlight fully visible
+      // We avoid forcing a font family or manual transforms to preserve accurate positioning
+      container.style.opacity = '0.2'
+      container.style.userSelect = 'text'
     } catch (error) {
       console.error('Error rendering text layer:', error)
     }

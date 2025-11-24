@@ -7,7 +7,7 @@ import numpy as np
 from difflib import SequenceMatcher
 
 class HybridRetriever:
-    def __init__(self, domain: Optional[str] = None, embedding_model: str = "paraphrase-MiniLM-L3-v2"):
+    def __init__(self, domain: Optional[str] = None, embedding_model: str = "all-MiniLM-L12-v2"):
         """
         Hybrid retriever combining BM25 and sentence embeddings
         
@@ -17,8 +17,9 @@ class HybridRetriever:
         """
         self.bm25 = None
         self.embedding_model = None
-        self.chunks = []
-        self.chunk_embeddings = None
+        self.embedding_model_name = embedding_model
+        self.chunks: List[Dict[str, Any]] = []
+        self.chunk_embeddings: Optional[np.ndarray] = None
         self.domain = domain or 'general'
         
         # Initialize embedding model
@@ -198,8 +199,13 @@ class HybridRetriever:
         
         return selected
     
-    def build_index(self, chunks: List[Dict[str, Any]]):
-        """Build hybrid index (BM25 + embeddings) from chunks"""
+    def build_index(self, chunks: List[Dict[str, Any]], precomputed_embeddings: Optional[np.ndarray] = None):
+        """Build hybrid index (BM25 + embeddings) from chunks.
+
+        Args:
+            chunks: list of chunk dicts (must include 'chunk_id').
+            precomputed_embeddings: optional ndarray (N, D) aligned to provided chunk ordering.
+        """
         self.chunks = chunks
         
         # Build BM25 index
@@ -215,14 +221,16 @@ class HybridRetriever:
         self.bm25 = BM25Okapi(tokenized_chunks, **params)
         
         # Build embeddings index
-        if self.embedding_model:
+        if precomputed_embeddings is not None:
+            # Use provided embeddings (already aligned with passed chunks ordering)
+            self.chunk_embeddings = precomputed_embeddings
+            print(f"✅ Loaded {len(precomputed_embeddings)} precomputed embeddings (skipped recompute)")
+        elif self.embedding_model:
             print("🔍 Building embeddings index...")
             chunk_texts = []
             for chunk in chunks:
                 weighted_text = self.weighted_text_representation(chunk)
                 chunk_texts.append(weighted_text)
-            
-            # Compute embeddings
             self.chunk_embeddings = self.embedding_model.encode(chunk_texts, show_progress_bar=True)
             print(f"✅ Computed embeddings for {len(chunks)} chunks")
         else:
@@ -319,13 +327,13 @@ class HybridRetriever:
             'top_chunks': top_chunks,
             'all_bm25_scores': bm25_scores,
             'all_embedding_scores': embedding_scores,
-            'embedding_model': 'paraphrase-MiniLM-L3-v2' if self.embedding_model else None
+            'embedding_model': 'all-MiniLM-L12-v2' if self.embedding_model else None
         }
 
-def build_hybrid_index(chunks: List[Dict[str, Any]], domain: Optional[str] = None, embedding_model: str = "paraphrase-MiniLM-L3-v2") -> HybridRetriever:
-    """Build hybrid BM25 + embeddings index from chunks"""
+def build_hybrid_index(chunks: List[Dict[str, Any]], domain: Optional[str] = None, embedding_model: str = "all-MiniLM-L12-v2", precomputed_embeddings: Optional[np.ndarray] = None) -> HybridRetriever:
+    """Build hybrid BM25 + embeddings index from chunks (optionally with precomputed embeddings)."""
     retriever = HybridRetriever(domain, embedding_model)
-    retriever.build_index(chunks)
+    retriever.build_index(chunks, precomputed_embeddings=precomputed_embeddings)
     return retriever
 
 def search_top_k_hybrid(retriever: HybridRetriever, query: str, persona: str = "", task: str = "", k: int = 5) -> List[Dict[str, Any]]:
