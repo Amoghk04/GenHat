@@ -362,21 +362,100 @@ function initializeApp() {
     }
   }
 
+  // Show selection analysis popup
+  function showSelectionAnalysisPopup(content: string, isLoading: boolean = false) {
+    let popup = document.getElementById('selectionAnalysisPopup')
+    
+    if (!popup) {
+      popup = document.createElement('div')
+      popup.id = 'selectionAnalysisPopup'
+      popup.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        width: 400px;
+        max-height: 600px;
+        background: #1a1a1a;
+        border: 1px solid #ff8c00;
+        border-radius: 8px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        z-index: 10000;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        transition: transform 0.3s ease, opacity 0.3s ease;
+      `
+      
+      // Header
+      const header = document.createElement('div')
+      header.style.cssText = `
+        padding: 12px 16px;
+        background: #2a2a2a;
+        border-bottom: 1px solid #333;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      `
+      header.innerHTML = `
+        <span style="color: #ff8c00; font-weight: 600;">📝 Selection Analysis</span>
+        <button id="closeSelectionPopup" style="background: none; border: none; color: #888; cursor: pointer; font-size: 18px;">×</button>
+      `
+      
+      // Body
+      const body = document.createElement('div')
+      body.id = 'selectionPopupBody'
+      body.style.cssText = `
+        padding: 16px;
+        overflow-y: auto;
+        color: #e0e0e0;
+        font-size: 14px;
+        line-height: 1.5;
+        max-height: 500px;
+      `
+      
+      popup.appendChild(header)
+      popup.appendChild(body)
+      document.body.appendChild(popup)
+      
+      // Close handler
+      const closeBtn = popup.querySelector('#closeSelectionPopup')
+      if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+          popup?.remove()
+        })
+      }
+    }
+
+    const body = popup.querySelector('#selectionPopupBody')
+    if (body) {
+      if (isLoading) {
+        body.innerHTML = `
+          <div style="display: flex; align-items: center; gap: 10px; color: #888;">
+            <div class="typing-dot" style="background: #ff8c00;"></div>
+            Analyzing selection...
+          </div>
+        `
+      } else {
+        body.innerHTML = parseMarkdown(content)
+      }
+    }
+  }
+
   // Handle text selection in PDF
   async function handlePDFTextSelection(text: string, pageNumber: number, documentName: string) {
     if (!appState.cacheKey) {
-      addChatMessage('⚠️ Please wait for documents to finish processing before analyzing text selections.', false)
+      showSelectionAnalysisPopup('⚠️ Please wait for documents to finish processing before analyzing text selections.')
       return
     }
 
     if (appState.isProcessing) {
-      addChatMessage('⚠️ Already processing a request. Please wait...', false)
+      showSelectionAnalysisPopup('⚠️ Already processing a request. Please wait...')
       return
     }
 
     try {
       appState.isProcessing = true
-      addChatMessage(`📝 Analyzing selected text from ${documentName} (page ${pageNumber})...`, false)
+      showSelectionAnalysisPopup('', true)
 
       // Create a focused task from the selected text
       const task = `Analyze and explain this text in detail: "${text.substring(0, 200)}${text.length > 200 ? '...' : ''}"`
@@ -393,19 +472,14 @@ function initializeApp() {
       // Display analysis
       if (analysisResponse.gemini_analysis && analysisResponse.gemini_analysis.length > 0) {
         const geminiText = analysisResponse.gemini_analysis[0].gemini_analysis
-        
-        // Format as a focused response
-        addChatMessage(`💡 **Analysis of selected text:**\n\n${geminiText}`, false)
+        showSelectionAnalysisPopup(geminiText)
       } else {
-        addChatMessage('I couldn\'t analyze the selected text. Please try selecting a different section.', false)
+        showSelectionAnalysisPopup('I couldn\'t analyze the selected text. Please try selecting a different section.')
       }
 
     } catch (error) {
       console.error('Error analyzing text selection:', error)
-      addChatMessage(
-        `❌ Failed to analyze selection: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        false
-      )
+      showSelectionAnalysisPopup(`❌ Failed to analyze selection: ${error instanceof Error ? error.message : 'Unknown error'}`)
     } finally {
       appState.isProcessing = false
     }
@@ -1002,6 +1076,7 @@ function initializeApp() {
         if (appState.cacheKey && !appState.isProcessing) {
           try {
             appState.isProcessing = true
+            showLoadingOverlay('Recomputing Embeddings...', 'Updating document index after removal')
             addChatMessage('🔄 Recomputing embeddings without this PDF...', false)
             
             // Call backend to remove PDF and rebuild index
@@ -1028,6 +1103,7 @@ function initializeApp() {
             appState.cacheKey = null
           } finally {
             appState.isProcessing = false
+            hideLoadingOverlay()
           }
         }
       })
