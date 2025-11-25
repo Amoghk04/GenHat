@@ -5,7 +5,8 @@ import {
   cachePDFs,
   waitForCacheReadyWithProgress,
   analyzeChunksWithGemini,
-  removePDF
+  removePDF,
+  podcastFromPrompt
 } from './api.js'
 
 import { PDFViewer } from './pdfViewer.js'
@@ -301,166 +302,78 @@ function initializeApp() {
 
   function renderTabs() {
     if (!tabsContainerEl) return
-
     // Clear existing tabs
     tabsContainerEl.innerHTML = ''
 
-    // Create tabs
+    // Create each tab element
     for (const tab of tabs.values()) {
       const tabEl = document.createElement('div')
       tabEl.className = `tab ${tab.id === activeTabId ? 'active' : ''}`
       tabEl.dataset.tabId = tab.id
-      if (tabs.size > 1) {
-        tabEl.setAttribute('draggable', 'true')
-      }
-      
-      const iconEl = document.createElement('span')
-      iconEl.className = 'tab-icon'
-      iconEl.textContent = tab.icon
-      
-      const labelEl = document.createElement('span')
-      labelEl.className = 'tab-label'
-      labelEl.textContent = tab.name
-      
-      const closeEl = document.createElement('div')
-      closeEl.className = 'tab-close'
-      closeEl.innerHTML = '×'
-      
-      tabEl.appendChild(iconEl)
-      tabEl.appendChild(labelEl)
-      if (tabs.size > 1) {
-        tabEl.appendChild(closeEl)
-      }
-      
+      tabEl.draggable = true
+
+      // Tab inner HTML
+      tabEl.innerHTML = `
+        <span class="tab-icon">${tab.icon}</span>
+        <span class="tab-name">${tab.name}</span>
+        ${tabs.size > 1 ? '<button class="tab-close" title="Close">×</button>' : ''}
+      `
+
+      // Click to activate
       tabEl.addEventListener('click', (e) => {
-        if ((e.target as HTMLElement).classList.contains('tab-close')) {
+        if ((e.target as HTMLElement).classList.contains('tab-close')) return
+        switchToTab(tab.id)
+      })
+
+      // Close button
+      const closeBtn = tabEl.querySelector('.tab-close') as HTMLButtonElement | null
+      if (closeBtn) {
+        closeBtn.addEventListener('click', (e) => {
+          e.stopPropagation()
           closeTab(tab.id)
-        } else {
-          switchToTab(tab.id)
-        }
-      })
+        })
+      }
 
-      tabEl.addEventListener('dragstart', (event) => {
-        if (tabs.size <= 1) {
-          return
-        }
-
+      // Drag start
+      tabEl.addEventListener('dragstart', (e) => {
         draggedTabId = tab.id
-        tabEl.classList.add('dragging')
-        event.dataTransfer?.setData('text/plain', tab.id)
-        event.dataTransfer?.setDragImage(tabEl, 20, 20)
+        e.dataTransfer?.setData('text/plain', tab.id)
+        e.dataTransfer?.setDragImage(tabEl, 10, 10)
       })
 
-      tabEl.addEventListener('dragend', () => {
-        tabEl.classList.remove('dragging', 'drag-over-before', 'drag-over-after')
-        draggedTabId = null
+      // Drag over other tab
+      tabEl.addEventListener('dragover', (e) => {
+        if (!draggedTabId || draggedTabId === tab.id) return
+        e.preventDefault()
+        const bounding = tabEl.getBoundingClientRect()
+        const offset = e.clientX - bounding.left
+        const dropBefore = offset < bounding.width / 2
+        ;(tabEl as any).dataset.dropPosition = dropBefore ? 'before' : 'after'
       })
 
-      tabEl.addEventListener('dragover', (event) => {
-        if (!draggedTabId || draggedTabId === tab.id) {
-          return
-        }
-
-        event.preventDefault()
-        event.stopPropagation()
-        if (event.dataTransfer) {
-          event.dataTransfer.dropEffect = 'move'
-        }
-
-        const bounds = tabEl.getBoundingClientRect()
-        const dropBefore = event.clientX < bounds.left + bounds.width / 2
-        tabEl.classList.toggle('drag-over-before', dropBefore)
-        tabEl.classList.toggle('drag-over-after', !dropBefore)
-      })
-
+      // Drag leave
       tabEl.addEventListener('dragleave', () => {
-        tabEl.classList.remove('drag-over-before', 'drag-over-after')
+        delete (tabEl as any).dataset.dropPosition
       })
 
-      tabEl.addEventListener('drop', (event) => {
-        if (!draggedTabId || draggedTabId === tab.id) {
-          return
-        }
-
-        event.preventDefault()
-        event.stopPropagation()
-        const bounds = tabEl.getBoundingClientRect()
-        const dropBefore = event.clientX < bounds.left + bounds.width / 2
-        tabEl.classList.remove('drag-over-before', 'drag-over-after')
-        reorderTabs(draggedTabId, tab.id, dropBefore)
+      // Drop on tab
+      tabEl.addEventListener('drop', (e) => {
+        if (!draggedTabId || draggedTabId === tab.id) return
+        e.preventDefault()
+        const dropPos = (tabEl as any).dataset.dropPosition
+        reorderTabs(draggedTabId, tab.id, dropPos === 'before')
         draggedTabId = null
+      })
+
+      // Drag end cleanup
+      tabEl.addEventListener('dragend', () => {
+        draggedTabId = null
+        const allTabs = tabsContainerEl.querySelectorAll('.tab')
+        allTabs.forEach(t => delete (t as any).dataset.dropPosition)
       })
 
       tabsContainerEl.appendChild(tabEl)
     }
-  }
-
-  function clearObjectURLs() {
-    for (const f of files) {
-      if (f.url) {
-        try { URL.revokeObjectURL(f.url) } catch (_) { }
-        delete f.url
-      }
-    }
-  }
-
-  // Show popup modal with platform-specific options
-  function showPopup(platform: Platform) {
-    currentPlatform = platform
-
-    let title = ''
-    let content = ''
-
-    switch (platform) {
-      case 'mindmap':
-        title = '🧠 Mind Map Options'
-        content = `
-          <div style="display: flex; flex-direction: column; gap: 12px;">
-            <p style="color: #e0e0e0;">Create a mind map from your documents:</p>
-            <button style="background: linear-gradient(135deg, #ff8c00 0%, #ff6b00 100%); border: none; border-radius: 6px; padding: 10px 20px; color: white; font-weight: 600; cursor: pointer;">
-              Generate Mind Map
-            </button>
-            <button style="background: #2a2a2a; border: 1px solid #ff8c00; border-radius: 6px; padding: 10px 20px; color: #ff8c00; font-weight: 600; cursor: pointer;">
-              Upload Existing Mind Map
-            </button>
-          </div>
-        `
-        break
-      case 'podcast':
-        title = '🎙️ Podcast Options'
-        content = `
-          <div style="display: flex; flex-direction: column; gap: 12px;">
-            <p style="color: #e0e0e0;">Generate or play podcasts:</p>
-            <button style="background: linear-gradient(135deg, #ff8c00 0%, #ff6b00 100%); border: none; border-radius: 6px; padding: 10px 20px; color: white; font-weight: 600; cursor: pointer;">
-              Generate Podcast from PDF
-            </button>
-            <button style="background: #2a2a2a; border: 1px solid #ff8c00; border-radius: 6px; padding: 10px 20px; color: #ff8c00; font-weight: 600; cursor: pointer;">
-              Upload Audio File
-            </button>
-          </div>
-        `
-        break
-      case 'more':
-        title = '⚙️ More Options'
-        content = `
-          <div style="display: flex; flex-direction: column; gap: 12px;">
-            <button style="background: #2a2a2a; border: 1px solid #ff8c00; border-radius: 6px; padding: 10px 20px; color: #ff8c00; font-weight: 600; cursor: pointer; text-align: left;">
-              ⚙️ Settings
-            </button>
-            <button style="background: #2a2a2a; border: 1px solid #ff8c00; border-radius: 6px; padding: 10px 20px; color: #ff8c00; font-weight: 600; cursor: pointer; text-align: left;">
-              📤 Export Data
-            </button>
-            <button style="background: #2a2a2a; border: 1px solid #ff8c00; border-radius: 6px; padding: 10px 20px; color: #ff8c00; font-weight: 600; cursor: pointer; text-align: left;">
-              ℹ️ About GenHat
-            </button>
-          </div>
-        `
-        break
-    }
-
-    popupTitle!.textContent = title
-    popupBody!.innerHTML = content
-    popupModal!.classList.add('active')
   }
 
   // Open PDF viewer in popup with text selection support
@@ -1033,135 +946,132 @@ function initializeApp() {
 
   // Send chat message
   async function sendMessage() {
-    const message = chatInputEl.value.trim()
-    if (!message) return
+    const raw = chatInputEl.value.trim()
+    if (!raw) return
+    const message = raw
 
+    // Push user message
     addChatMessage(message, true)
     chatInputEl.value = ''
 
-    // Check if PDFs are uploaded and cached
+    // Preconditions
     if (files.length === 0) {
-      addChatMessage('Please upload some PDF files first to enable AI analysis.', false)
+      addChatMessage('📄 Please upload PDF files first.', false)
       return
     }
-
-    // Check if cache is ready
     if (!appState.cacheKey) {
-      addChatMessage('⏳ Please wait for documents to finish processing before querying...', false)
+      addChatMessage('⏳ Waiting for document processing to finish...', false)
+      return
+    }
+    if (appState.isProcessing) {
+      addChatMessage('⏳ Still working on previous request...', false)
       return
     }
 
-    // Check if processing
-    if (appState.isProcessing) {
-      addChatMessage('Please wait, I\'m processing your previous request...', false)
-      return
-    }
+    appState.isProcessing = true
+    const persona = appState.currentPersona
+    const task = message
 
     try {
-      appState.isProcessing = true
-     
-
-      // Extract persona and task from message, or use defaults
-      const persona = appState.currentPersona
-      const task = message
-
-      // Call Gemini analysis - use typing indicator for AI processing
       showTypingIndicator()
-      const analysisResponse = await analyzeChunksWithGemini(
-        appState.cacheKey,
-        persona,
-        task,
-        5, // k
-        5  // max_chunks_to_analyze
-      )
-
-      hideTypingIndicator()
-
-      // Format and display response as a single markdown message
-      if (analysisResponse.gemini_analysis && analysisResponse.gemini_analysis.length > 0) {
-        const geminiText = analysisResponse.gemini_analysis[0].gemini_analysis
+      if (currentPlatform === 'podcast') {
+        addChatMessage('🎙️ Generating podcast content...', false)
+        const podcastResp = await podcastFromPrompt(appState.projectName, message, 5, 'Podcast Host')
+        hideTypingIndicator()
         
-        // Display entire Gemini response as one message with markdown formatting
-        addChatMessage(geminiText, false)
+        // Build chat message with embedded audio player
+        const fullAudioUrl = podcastResp.audio_url ? `http://localhost:8080${podcastResp.audio_url}` : null
+        let podcastChatMessage = '**🎙️ Podcast Generated**\n\n'
+        if (fullAudioUrl) {
+          podcastChatMessage += `<div style="margin: 16px 0; padding: 16px; background: #1a1a1a; border-radius: 8px; border: 1px solid #ff8c00;"><div style="font-size: 14px; color: #ff8c00; margin-bottom: 12px; font-weight: 600;">🎧 Audio Player</div><audio controls preload="metadata" style="width: 100%; height: 40px;"><source src="${fullAudioUrl}" type="audio/mpeg"></audio></div>\n\n`
+        }
+        podcastChatMessage += `**Script:**\n${podcastResp.script}`
+        addChatMessage(podcastChatMessage, false)
+        
+        const podcastList = document.getElementById('podcastList')
+        if (podcastList) {
+          podcastList.querySelectorAll('div').forEach(div => {
+            if (div.textContent?.includes('No podcasts')) div.remove()
+          })
+          const item = document.createElement('li')
+            item.style.cssText = 'padding:12px; border:1px solid #2a2a2a; border-radius:6px; margin-bottom:8px; background:#1a1a1a; display:flex; flex-direction:column; gap:8px;'
+            // Construct full audio URL for Electron environment
+            const fullAudioUrl = podcastResp.audio_url ? `http://localhost:8080${podcastResp.audio_url}` : null
+            item.innerHTML = `
+              <div style='display:flex; justify-content:space-between; align-items:center;'>
+                <strong style='color:#ff8c00;'>🎙️ ${podcastResp.insight_id.slice(0,8)}</strong>
+                <span style='font-size:11px; color:#666;'>${new Date().toLocaleTimeString()}</span>
+              </div>
+              <div style='font-size:12px; color:#ccc; max-height:80px; overflow:auto;'>${podcastResp.script.substring(0,300).replace(/</g,'&lt;')}...</div>
+              ${fullAudioUrl ? `<audio controls style='width:100%;'>
+                  <source src='${fullAudioUrl}' type='audio/mpeg'>
+                  Your browser does not support audio.
+                </audio>` : `<div style='color:#888; font-size:12px;'>No audio generated (TTS unavailable)</div>`}
+              <button data-insight='${podcastResp.insight_id}' style='background:#ff8c00; border:none; color:#fff; padding:6px 10px; border-radius:4px; cursor:pointer; font-size:12px;'>Open Full Script</button>
+            `
+          const btn = item.querySelector('button')
+          btn?.addEventListener('click', () => {
+            addChatMessage(`📜 Full Script for ${podcastResp.insight_id}\n\n${podcastResp.script}`, false)
+          })
+          podcastList.prepend(item)
+        }
       } else {
-        addChatMessage('I analyzed your documents but couldn\'t generate insights. Please try rephrasing your question.', false)
+        const analysisResponse = await analyzeChunksWithGemini(appState.cacheKey, persona, task, 5, 5)
+        hideTypingIndicator()
+        if (analysisResponse.gemini_analysis && analysisResponse.gemini_analysis.length > 0) {
+          addChatMessage(analysisResponse.gemini_analysis[0].gemini_analysis, false)
+        } else {
+          addChatMessage('I analyzed your documents but could not produce insights. Try rephrasing.', false)
+        }
       }
-
-      // Show metadata
-     
-
     } catch (error) {
-      console.error('Error in sendMessage:', error)
-      hideLoadingOverlay()
       hideTypingIndicator()
-      addChatMessage(
-        `❌ Error: ${error instanceof Error ? error.message : 'Failed to analyze documents. Make sure the backend server is running on http://localhost:8080'}`,
-        false
-      )
+      console.error('sendMessage error:', error)
+      addChatMessage(`❌ Error: ${error instanceof Error ? error.message : 'Unknown failure'}`, false)
     } finally {
       appState.isProcessing = false
     }
   }
 
-  // Send an edited message (used when continuing from edited point)
-  async function sendEditedMessage(message: string) {
-    if (!message) return
-
-    // Check if PDFs are uploaded and cached
+  // Continue conversation after editing a previous user message
+  async function sendEditedMessage(editedText: string) {
+    if (!editedText) return
     if (files.length === 0) {
-      addChatMessage('Please upload some PDF files first to enable AI analysis.', false)
+      addChatMessage('📄 Please upload PDF files first.', false)
       return
     }
-
-    // Check if cache is ready
     if (!appState.cacheKey) {
-      addChatMessage('⏳ Please wait for documents to finish processing before querying...', false)
+      addChatMessage('⏳ Waiting for document processing to finish...', false)
       return
     }
-
-    // Check if processing
     if (appState.isProcessing) {
-      addChatMessage('Please wait, I\'m processing your previous request...', false)
+      addChatMessage('⏳ Still working on previous request...', false)
       return
     }
 
+    appState.isProcessing = true
+    const persona = appState.currentPersona
+    const task = editedText
     try {
-      appState.isProcessing = true
-
-      // Extract persona and task from message, or use defaults
-      const persona = appState.currentPersona
-      const task = message
-
-      // Call Gemini analysis - use typing indicator for AI processing
       showTypingIndicator()
-      const analysisResponse = await analyzeChunksWithGemini(
-        appState.cacheKey,
-        persona,
-        task,
-        5, // k
-        5  // max_chunks_to_analyze
-      )
-
-      hideTypingIndicator()
-
-      // Format and display response as a single markdown message
-      if (analysisResponse.gemini_analysis && analysisResponse.gemini_analysis.length > 0) {
-        const geminiText = analysisResponse.gemini_analysis[0].gemini_analysis
-        
-        // Display entire Gemini response as one message with markdown formatting
-        addChatMessage(geminiText, false)
+      if (currentPlatform === 'podcast') {
+        addChatMessage('🎙️ Regenerating podcast with edited prompt...', false)
+        const podcastResp = await podcastFromPrompt(appState.projectName, editedText, 5, 'Podcast Host')
+        hideTypingIndicator()
+        addChatMessage(`**Podcast Script (Edited)**\n${podcastResp.script}`, false)
       } else {
-        addChatMessage('I analyzed your documents but couldn\'t generate insights. Please try rephrasing your question.', false)
+        const analysisResponse = await analyzeChunksWithGemini(appState.cacheKey, persona, task, 5, 5)
+        hideTypingIndicator()
+        if (analysisResponse.gemini_analysis && analysisResponse.gemini_analysis.length > 0) {
+          addChatMessage(analysisResponse.gemini_analysis[0].gemini_analysis, false)
+        } else {
+          addChatMessage('I analyzed your documents but could not produce insights. Try rephrasing.', false)
+        }
       }
-
     } catch (error) {
-      console.error('Error in sendEditedMessage:', error)
-      hideLoadingOverlay()
       hideTypingIndicator()
-      addChatMessage(
-        `❌ Error: ${error instanceof Error ? error.message : 'Failed to analyze documents. Make sure the backend server is running on http://localhost:8080'}`,
-        false
-      )
+      console.error('sendEditedMessage error:', error)
+      addChatMessage(`❌ Error: ${error instanceof Error ? error.message : 'Unknown failure'}`, false)
     } finally {
       appState.isProcessing = false
     }
@@ -1285,8 +1195,8 @@ function initializeApp() {
     })
   }
 
-  fileInput.addEventListener('change', async () => {
-    const selected = fileInput.files
+  fileInput!.addEventListener('change', async () => {
+    const selected = fileInput!.files
     if (!selected || selected.length === 0) return
 
     // Add new files to existing list instead of replacing
@@ -1337,7 +1247,7 @@ function initializeApp() {
     }
     
     // Reset the file input so the same file can be added again if needed
-    fileInput.value = ''
+    fileInput!.value = ''
   })
 
   // Initialize tab system
@@ -1425,6 +1335,11 @@ function initializeApp() {
   window.addEventListener('beforeunload', () => {
     clearObjectURLs()
   })
+
+  // Release any object URLs created for file previews
+  function clearObjectURLs() {
+    files.forEach(f => { if (f.url) URL.revokeObjectURL(f.url) })
+  }
 }
 
 // Run initialization when DOM is ready or immediately if already loaded
