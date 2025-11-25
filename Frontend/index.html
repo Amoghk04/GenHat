@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://unpkg.com; style-src 'self' 'unsafe-inline'; connect-src 'self' http://localhost:8080 https://generativelanguage.googleapis.com; img-src 'self' data: blob:; font-src 'self' data:;" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://unpkg.com; style-src 'self' 'unsafe-inline'; connect-src 'self' http://localhost:8080 https://generativelanguage.googleapis.com https://unpkg.com; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' http://localhost:8080 blob:; frame-src 'self' blob:;" />
     
     <!-- PDF.js library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -1018,7 +1018,7 @@
       // Error handler for module loading
       window.addEventListener('error', (e) => {
         console.error('Global error:', e.message, e.filename, e.lineno, e.colno);
-        if (e.message.includes('Failed to fetch') || e.message.includes('module')) {
+        if (e.message && (e.message.includes('Failed to fetch') || e.message.includes('module'))) {
           document.body.innerHTML += `
             <div style="position: fixed; top: 0; left: 0; right: 0; background: #f44336; color: white; padding: 16px; z-index: 10000;">
               <strong>Module Loading Error:</strong> ${e.message}<br>

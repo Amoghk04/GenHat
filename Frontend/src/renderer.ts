@@ -605,8 +605,12 @@ function initializeApp() {
         align-items: center;
       `
       header.innerHTML = `
-        <span style="color: #ff8c00; font-weight: 600;">📝 Selection Analysis</span>
-        <button id="closeSelectionPopup" style="background: none; border: none; color: #888; cursor: pointer; font-size: 18px;">×</button>
+        <span style="color: #ff8c00; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+          <i data-lucide="file-text" style="width: 16px; height: 16px;"></i> Selection Analysis
+        </span>
+        <button id="closeSelectionPopup" style="background: none; border: none; color: #888; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 4px;">
+          <i data-lucide="x" style="width: 16px; height: 16px;"></i>
+        </button>
       `
       
       // Body
@@ -624,6 +628,10 @@ function initializeApp() {
       popup.appendChild(header)
       popup.appendChild(body)
       document.body.appendChild(popup)
+
+      if (typeof lucide !== 'undefined') {
+        lucide.createIcons({ root: popup, nameAttr: 'data-lucide' })
+      }
       
       // Close handler
       const closeBtn = popup.querySelector('#closeSelectionPopup')
@@ -697,6 +705,23 @@ function initializeApp() {
   function parseMarkdown(text: string): string {
     let html = text
     
+    const preservedElements: string[] = []
+
+    // Handle Audio Player Placeholder
+    html = html.replace(/\[\[AUDIO_PLAYER:(.+?)\]\]/g, (match, url) => {
+      console.log('Found audio player tag:', url)
+      const playerHtml = `<span style="display: block; margin: 16px 0; padding: 16px; background: #1a1a1a; border-radius: 8px; border: 1px solid #ff8c00;">
+        <span style="font-size: 14px; color: #ff8c00; margin-bottom: 12px; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+          <i data-lucide="headphones" style="width: 16px; height: 16px;"></i> Audio Player
+        </span>
+        <audio controls preload="metadata" style="width: 100%; height: 40px; display: block;">
+          <source src="${url}" type="audio/mpeg">
+        </audio>
+      </span>`
+      preservedElements.push(playerHtml)
+      return `HTMLPLACEHOLDER${preservedElements.length - 1}`
+    })
+    
     // Headers (## heading)
     html = html.replace(/^### (.+)$/gm, '<h3 style="color: #ff8c00; margin: 12px 0 8px 0; font-size: 16px;">$1</h3>')
     html = html.replace(/^## (.+)$/gm, '<h2 style="color: #ff8c00; margin: 16px 0 10px 0; font-size: 18px;">$1</h2>')
@@ -732,6 +757,11 @@ function initializeApp() {
     
     // Wrap in paragraph
     html = '<p style="margin: 8px 0;">' + html + '</p>'
+    
+    // Restore preserved HTML elements
+    preservedElements.forEach((element, index) => {
+      html = html.replace(`HTMLPLACEHOLDER${index}`, element)
+    })
     
     return html
   }
@@ -775,12 +805,7 @@ function initializeApp() {
     // Create copy button
     const copyBtn = document.createElement('button')
     copyBtn.className = 'message-copy-btn'
-    copyBtn.innerHTML = `
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
-        <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
-      </svg>
-    `
+    copyBtn.innerHTML = `<i data-lucide="copy" style="width: 16px; height: 16px;"></i>`
     copyBtn.title = 'Copy message'
     copyBtn.addEventListener('click', async (e) => {
       e.stopPropagation()
@@ -807,12 +832,7 @@ function initializeApp() {
     if (isUser) {
       const editBtn = document.createElement('button')
       editBtn.className = 'message-edit-btn'
-      editBtn.innerHTML = `
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-        </svg>
-      `
+      editBtn.innerHTML = `<i data-lucide="edit-2" style="width: 16px; height: 16px;"></i>`
       editBtn.title = 'Edit and continue'
       editBtn.addEventListener('click', (e) => {
         e.stopPropagation()
@@ -827,6 +847,9 @@ function initializeApp() {
 
     chatContainerEl.appendChild(messageWrapper)
     chatContainerEl.scrollTop = chatContainerEl.scrollHeight
+    
+    // Initialize icons
+    lucide.createIcons()
   }
 
   // Enter edit mode for a message
@@ -1130,11 +1153,11 @@ function initializeApp() {
         
         // Build chat message with embedded audio player
         const fullAudioUrl = podcastResp.audio_url ? `http://localhost:8080${podcastResp.audio_url}` : null
-        let podcastChatMessage = '**🎙️ Podcast Generated**\n\n'
+        let podcastChatMessage = '<span style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;"><i data-lucide="mic" style="width: 20px; height: 20px; color: #ff8c00;"></i> <strong style="font-size: 1.1em;">Podcast Generated</strong></span>\n\n'
         if (fullAudioUrl) {
-          podcastChatMessage += `<div style="margin: 16px 0; padding: 16px; background: #1a1a1a; border-radius: 8px; border: 1px solid #ff8c00;"><div style="font-size: 14px; color: #ff8c00; margin-bottom: 12px; font-weight: 600;">🎧 Audio Player</div><audio controls preload="metadata" style="width: 100%; height: 40px;"><source src="${fullAudioUrl}" type="audio/mpeg"></audio></div>\n\n`
+          podcastChatMessage += `[[AUDIO_PLAYER:${fullAudioUrl}]]\n\n`
         }
-        podcastChatMessage += `**Script:**\n${podcastResp.script}`
+        podcastChatMessage += `<span style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;"><i data-lucide="file-text" style="width: 16px; height: 16px; color: #888;"></i> <strong>Script:</strong></span>\n${podcastResp.script}`
         addChatMessage(podcastChatMessage, false)
         
         const podcastList = document.getElementById('podcastList')
