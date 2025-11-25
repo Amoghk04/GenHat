@@ -203,7 +203,7 @@ export class PDFViewer {
 
       // Make the glyphs transparent but keep native selection highlight fully visible
       // We avoid forcing a font family or manual transforms to preserve accurate positioning
-      container.style.opacity = '1'
+      container.style.opacity = '0.5'
       container.style.color = 'transparent'
       container.style.userSelect = 'text'
     } catch (error) {

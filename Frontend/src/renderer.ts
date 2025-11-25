@@ -573,7 +573,37 @@ function initializeApp() {
   // Show selection analysis popup
   function showSelectionAnalysisPopup(content: string, isLoading: boolean = false) {
     let popup = document.getElementById('selectionAnalysisPopup')
+    let restoreBtn = document.getElementById('selectionAnalysisRestoreBtn')
     
+    if (!restoreBtn) {
+        restoreBtn = document.createElement('button')
+        restoreBtn.id = 'selectionAnalysisRestoreBtn'
+        restoreBtn.innerHTML = '<i data-lucide="chevron-left" style="width: 24px; height: 24px;"></i>'
+        restoreBtn.style.cssText = `
+            position: fixed;
+            top: 50%;
+            right: 0;
+            transform: translateY(-50%);
+            background: #ff8c00;
+            color: white;
+            border: none;
+            border-radius: 8px 0 0 8px;
+            padding: 12px 8px;
+            cursor: pointer;
+            z-index: 10001;
+            display: none;
+            box-shadow: -2px 0 10px rgba(0,0,0,0.3);
+        `
+        document.body.appendChild(restoreBtn)
+        
+        restoreBtn.addEventListener('click', () => {
+            if (popup) {
+                popup.style.display = 'flex'
+                restoreBtn!.style.display = 'none'
+            }
+        })
+    }
+
     if (!popup) {
       popup = document.createElement('div')
       popup.id = 'selectionAnalysisPopup'
@@ -582,7 +612,9 @@ function initializeApp() {
         bottom: 20px;
         right: 20px;
         width: 400px;
-        max-height: 600px;
+        height: 500px;
+        min-width: 300px;
+        min-height: 200px;
         background: #1a1a1a;
         border: 1px solid #ff8c00;
         border-radius: 8px;
@@ -591,7 +623,7 @@ function initializeApp() {
         display: flex;
         flex-direction: column;
         overflow: hidden;
-        transition: transform 0.3s ease, opacity 0.3s ease;
+        transition: opacity 0.3s ease;
       `
       
       // Header
@@ -603,34 +635,57 @@ function initializeApp() {
         display: flex;
         justify-content: space-between;
         align-items: center;
+        cursor: move;
+        user-select: none;
       `
       header.innerHTML = `
-        <span style="color: #ff8c00; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+        <span style="color: #ff8c00; font-weight: 600; display: flex; align-items: center; gap: 8px; pointer-events: none;">
           <i data-lucide="file-text" style="width: 16px; height: 16px;"></i> Selection Analysis
         </span>
-        <button id="closeSelectionPopup" style="background: none; border: none; color: #888; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 4px;">
-          <i data-lucide="x" style="width: 16px; height: 16px;"></i>
-        </button>
+        <div style="display: flex; gap: 8px;">
+            <button id="minimizeSelectionPopup" style="background: none; border: none; color: #888; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 4px;">
+              <i data-lucide="minus" style="width: 16px; height: 16px;"></i>
+            </button>
+            <button id="closeSelectionPopup" style="background: none; border: none; color: #888; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 4px;">
+              <i data-lucide="x" style="width: 16px; height: 16px;"></i>
+            </button>
+        </div>
       `
       
       // Body
       const body = document.createElement('div')
       body.id = 'selectionPopupBody'
+      body.className = 'hide-scrollbar'
       body.style.cssText = `
         padding: 16px;
         overflow-y: auto;
         color: #e0e0e0;
         font-size: 14px;
         line-height: 1.5;
-        max-height: 500px;
+        flex: 1;
       `
       
+      // Resize Handle
+      const resizeHandle = document.createElement('div')
+      resizeHandle.style.cssText = `
+        position: absolute;
+        bottom: 0;
+        right: 0;
+        width: 16px;
+        height: 16px;
+        cursor: nwse-resize;
+        background: linear-gradient(135deg, transparent 50%, #ff8c00 50%);
+        border-radius: 0 0 8px 0;
+      `
+
       popup.appendChild(header)
       popup.appendChild(body)
+      popup.appendChild(resizeHandle)
       document.body.appendChild(popup)
 
       if (typeof lucide !== 'undefined') {
         lucide.createIcons({ root: popup, nameAttr: 'data-lucide' })
+        lucide.createIcons({ root: restoreBtn, nameAttr: 'data-lucide' })
       }
       
       // Close handler
@@ -638,8 +693,85 @@ function initializeApp() {
       if (closeBtn) {
         closeBtn.addEventListener('click', () => {
           popup?.remove()
+          restoreBtn?.remove()
         })
       }
+
+      // Minimize handler
+      const minimizeBtn = popup.querySelector('#minimizeSelectionPopup')
+      if (minimizeBtn) {
+        minimizeBtn.addEventListener('click', () => {
+            if (popup && restoreBtn) {
+                popup.style.display = 'none'
+                restoreBtn.style.display = 'block'
+            }
+        })
+      }
+
+      // Dragging Logic
+      let isDragging = false
+      let startX = 0
+      let startY = 0
+      let initialLeft = 0
+      let initialTop = 0
+
+      header.addEventListener('mousedown', (e) => {
+        isDragging = true
+        startX = e.clientX
+        startY = e.clientY
+        const rect = popup!.getBoundingClientRect()
+        initialLeft = rect.left
+        initialTop = rect.top
+        
+        // Remove bottom/right positioning to allow left/top positioning
+        popup!.style.bottom = 'auto'
+        popup!.style.right = 'auto'
+        popup!.style.left = `${initialLeft}px`
+        popup!.style.top = `${initialTop}px`
+      })
+
+      window.addEventListener('mousemove', (e) => {
+        if (isDragging && popup) {
+            const dx = e.clientX - startX
+            const dy = e.clientY - startY
+            popup.style.left = `${initialLeft + dx}px`
+            popup.style.top = `${initialTop + dy}px`
+        }
+      })
+
+      window.addEventListener('mouseup', () => {
+        isDragging = false
+      })
+
+      // Resizing Logic
+      let isResizing = false
+      let startWidth = 0
+      let startHeight = 0
+      let startResizeX = 0
+      let startResizeY = 0
+
+      resizeHandle.addEventListener('mousedown', (e) => {
+        isResizing = true
+        e.stopPropagation() // Prevent drag
+        startResizeX = e.clientX
+        startResizeY = e.clientY
+        const rect = popup!.getBoundingClientRect()
+        startWidth = rect.width
+        startHeight = rect.height
+      })
+
+      window.addEventListener('mousemove', (e) => {
+        if (isResizing && popup) {
+            const dx = e.clientX - startResizeX
+            const dy = e.clientY - startResizeY
+            popup.style.width = `${Math.max(300, startWidth + dx)}px`
+            popup.style.height = `${Math.max(200, startHeight + dy)}px`
+        }
+      })
+
+      window.addEventListener('mouseup', () => {
+        isResizing = false
+      })
     }
 
     const body = popup.querySelector('#selectionPopupBody')
