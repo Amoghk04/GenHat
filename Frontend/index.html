@@ -4,9 +4,10 @@
     <meta charset="utf-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; connect-src 'self' http://localhost:8080 https://generativelanguage.googleapis.com; img-src 'self' data: blob:; font-src 'self' data:;" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; connect-src 'self' http://localhost:8080 https://generativelanguage.googleapis.com; img-src 'self' data: blob:; font-src 'self' data:;" />
     
     <!-- PDF.js library -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf_viewer.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script>
       // Configure PDF.js worker
@@ -865,7 +866,22 @@
       .file-progress-item.error .file-progress-status {
         color: #f44336;
       }
-    </style>
+
+      /* PDF Text Layer Styles - Critical for correct alignment */
+      .textLayer {
+        opacity: 1 !important;
+        line-height: 1.0;
+      }
+
+      .textLayer span, .textLayer br {
+        color: transparent;
+        cursor: text;
+      }
+
+      .textLayer ::selection {
+        background: rgba(0, 0, 255, 0.3);
+        color: transparent;
+      }
     </style>
   </head>
   <body>

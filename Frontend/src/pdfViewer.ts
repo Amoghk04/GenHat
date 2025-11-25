@@ -79,7 +79,7 @@ export class PDFViewer {
         <div id="pdfCanvasContainer" style="flex: 1; overflow: auto; display: flex; justify-content: center; align-items: flex-start; padding: 20px; background: #1a1a1a;">
           <div style="position: relative; background: white; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
             <canvas id="pdfCanvas"></canvas>
-            <div id="textLayer" class="textLayer" style="position: absolute; left: 0; top: 0; right: 0; bottom: 0; overflow: hidden; opacity: 0.2; line-height: 1.0; cursor: text; text-align: initial;"></div>
+            <div id="textLayer" class="textLayer" style="position: absolute; left: 0; top: 0; right: 0; bottom: 0; overflow: hidden; opacity: 1; color: transparent; line-height: 1.0; cursor: text; text-align: initial;"></div>
           </div>
         </div>
       </div>
@@ -192,9 +192,10 @@ export class PDFViewer {
         await renderTask.promise
       }
 
-      // Make the glyphs barely visible but keep native selection highlight fully visible
+      // Make the glyphs transparent but keep native selection highlight fully visible
       // We avoid forcing a font family or manual transforms to preserve accurate positioning
-      container.style.opacity = '0.2'
+      container.style.opacity = '1'
+      container.style.color = 'transparent'
       container.style.userSelect = 'text'
     } catch (error) {
       console.error('Error rendering text layer:', error)
@@ -223,7 +224,7 @@ export class PDFViewer {
   }
 
   private async zoomIn(): Promise<void> {
-    this.scale = Math.min(this.scale + 0.25, 3.0)
+    this.scale = Math.min(this.scale + 0.25, 3)
     await this.renderPage(this.currentPage)
   }
 
