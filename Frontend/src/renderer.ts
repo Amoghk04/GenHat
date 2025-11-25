@@ -710,14 +710,23 @@ function initializeApp() {
     // Handle Audio Player Placeholder
     html = html.replace(/\[\[AUDIO_PLAYER:(.+?)\]\]/g, (match, url) => {
       console.log('Found audio player tag:', url)
-      const playerHtml = `<span style="display: block; margin: 16px 0; padding: 16px; background: #1a1a1a; border-radius: 8px; border: 1px solid #ff8c00;">
-        <span style="font-size: 14px; color: #ff8c00; margin-bottom: 12px; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+      const playerHtml = `<div class="audio-player-container" style="display: block; margin: 16px 0; padding: 16px; background: #1a1a1a; border-radius: 8px; border: 1px solid #ff8c00;">
+        <div style="font-size: 14px; color: #ff8c00; margin-bottom: 12px; font-weight: 600; display: flex; align-items: center; gap: 8px;">
           <i data-lucide="headphones" style="width: 16px; height: 16px;"></i> Audio Player
-        </span>
-        <audio controls preload="metadata" style="width: 100%; height: 40px; display: block;">
+        </div>
+        <div class="spectrum-display" style="width: 100%; height: 120px; background: #0d0d0d; border-radius: 6px; display: flex; align-items: center; position: relative; margin-bottom: 12px;">
+          <button class="play-pause-btn" style="position: absolute; left: 20px; z-index: 10; background: rgba(255, 140, 0, 0.9); border: none; border-radius: 50%; width: 60px; height: 60px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s ease; color: white; font-size: 24px;">
+            <i data-lucide="play" style="width: 24px; height: 24px;"></i>
+          </button>
+          <canvas class="audio-spectrum" width="400" height="80" style="flex: 1; background: transparent; margin-left: 100px;"></canvas>
+        </div>
+        <div class="progress-container" style="width: 100%; height: 6px; background: #333; border-radius: 3px; cursor: pointer; position: relative;">
+          <div class="progress-bar" style="height: 100%; background: #ff8c00; border-radius: 3px; width: 0%; transition: width 0.1s ease;"></div>
+        </div>
+        <audio preload="metadata" style="display: none;">
           <source src="${url}" type="audio/mpeg">
         </audio>
-      </span>`
+      </div>`
       preservedElements.push(playerHtml)
       return `HTMLPLACEHOLDER${preservedElements.length - 1}`
     })
@@ -764,6 +773,127 @@ function initializeApp() {
     })
     
     return html
+  }
+
+  // Initialize audio spectrum analyzer for a given audio element
+  function initializeAudioSpectrum(audioElement: HTMLAudioElement) {
+    const container = audioElement.closest('.audio-player-container') as HTMLElement
+    if (!container) return
+
+    const canvas = container.querySelector('.audio-spectrum') as HTMLCanvasElement
+    const playPauseBtn = container.querySelector('.play-pause-btn') as HTMLButtonElement
+    const progressContainer = container.querySelector('.progress-container') as HTMLElement
+    const progressBar = container.querySelector('.progress-bar') as HTMLElement
+
+    if (!canvas || !playPauseBtn || !progressContainer || !progressBar) return
+
+    const canvasContext = canvas.getContext('2d')
+    if (!canvasContext) return
+
+    let audioContext: AudioContext | null = null
+    let analyser: AnalyserNode | null = null
+    let dataArray: Uint8Array
+    let animationId: number | null = null
+    let lastDataArray: Uint8Array | null = null
+
+    const startSpectrum = () => {
+      if (!audioContext) {
+        audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+        analyser = audioContext.createAnalyser()
+        analyser.fftSize = 256
+        const bufferLength = analyser.frequencyBinCount
+        dataArray = new Uint8Array(bufferLength)
+
+        const source = audioContext.createMediaElementSource(audioElement)
+        source.connect(analyser)
+        analyser.connect(audioContext.destination)
+      }
+
+      const draw = () => {
+        if (!analyser || !canvasContext) return
+
+        analyser.getByteFrequencyData(dataArray as any)
+        lastDataArray = new Uint8Array(dataArray) // Store last frame
+
+        canvasContext.clearRect(0, 0, canvas.width, canvas.height)
+        canvasContext.fillStyle = '#ff8c00'
+
+        const barWidth = (canvas.width / dataArray.length) * 2.5
+        let barHeight
+        let x = 0
+
+        for (let i = 0; i < dataArray.length; i++) {
+          barHeight = (dataArray[i] / 255) * canvas.height
+
+          canvasContext.fillRect(x, canvas.height - barHeight, barWidth, barHeight)
+
+          x += barWidth + 1
+        }
+
+        animationId = requestAnimationFrame(draw)
+      }
+
+      draw()
+    }
+
+    const stopSpectrum = () => {
+      if (animationId) {
+        cancelAnimationFrame(animationId)
+        animationId = null
+      }
+      // Show the last frame dimmed when paused
+      if (canvasContext && lastDataArray) {
+        canvasContext.clearRect(0, 0, canvas.width, canvas.height)
+        canvasContext.fillStyle = 'rgba(255, 140, 0, 0.4)' // Dimmed color for paused state
+        
+        const barWidth = (canvas.width / lastDataArray.length) * 2.5
+        let barHeight
+        let x = 0
+        
+        for (let i = 0; i < lastDataArray.length; i++) {
+          barHeight = (lastDataArray[i] / 255) * canvas.height
+          canvasContext.fillRect(x, canvas.height - barHeight, barWidth, barHeight)
+          x += barWidth + 1
+        }
+      }
+    }
+
+    const updateProgress = () => {
+      const progress = (audioElement.currentTime / audioElement.duration) * 100
+      progressBar.style.width = `${progress}%`
+    }
+
+    const togglePlayPause = () => {
+      if (audioElement.paused) {
+        audioElement.play()
+        playPauseBtn.innerHTML = '<i data-lucide="pause" style="width: 24px; height: 24px;"></i>'
+        lucide.createIcons({ root: playPauseBtn })
+      } else {
+        audioElement.pause()
+        playPauseBtn.innerHTML = '<i data-lucide="play" style="width: 24px; height: 24px;"></i>'
+        lucide.createIcons({ root: playPauseBtn })
+      }
+    }
+
+    const seek = (event: MouseEvent) => {
+      const rect = progressContainer.getBoundingClientRect()
+      const clickX = event.clientX - rect.left
+      const percentage = clickX / rect.width
+      audioElement.currentTime = percentage * audioElement.duration
+    }
+
+    // Event listeners
+    playPauseBtn.addEventListener('click', togglePlayPause)
+    progressContainer.addEventListener('click', seek)
+    audioElement.addEventListener('play', startSpectrum)
+    audioElement.addEventListener('pause', stopSpectrum)
+    audioElement.addEventListener('ended', () => {
+      stopSpectrum()
+      playPauseBtn.innerHTML = '<i data-lucide="play" style="width: 24px; height: 24px;"></i>'
+      lucide.createIcons({ root: playPauseBtn })
+      progressBar.style.width = '0%'
+    })
+    audioElement.addEventListener('timeupdate', updateProgress)
   }
 
   // Add message to chat
@@ -847,6 +977,10 @@ function initializeApp() {
 
     chatContainerEl.appendChild(messageWrapper)
     chatContainerEl.scrollTop = chatContainerEl.scrollHeight
+    
+    // Initialize audio spectrum for any new audio players in this message
+    const audioElements = messageWrapper.querySelectorAll('audio')
+    audioElements.forEach(audio => initializeAudioSpectrum(audio as HTMLAudioElement))
     
     // Initialize icons
     lucide.createIcons()

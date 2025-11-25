@@ -907,6 +907,41 @@
       .file-progress-item.error .file-progress-status {
         color: #f44336;
       }
+
+      /* Custom Audio Player Styles */
+      .spectrum-display {
+        position: relative;
+      }
+
+      .play-pause-btn {
+        opacity: 0.8;
+        transform: scale(1);
+      }
+
+      .play-pause-btn:hover {
+        opacity: 1;
+        transform: scale(1.1);
+        box-shadow: 0 4px 12px rgba(255, 140, 0, 0.4);
+      }
+
+      .play-pause-btn:active {
+        transform: scale(0.95);
+      }
+
+      .progress-container {
+        background: #333;
+        border-radius: 3px;
+        overflow: hidden;
+      }
+
+      .progress-container:hover .progress-bar {
+        background: #ffa500;
+      }
+
+      .progress-bar {
+        background: #ff8c00;
+        transition: width 0.1s ease;
+      }
     </style>
     </style>
   </head>
