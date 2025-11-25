@@ -704,21 +704,25 @@ function initializeApp() {
   // Simple markdown to HTML converter
   function parseMarkdown(text: string): string {
     let html = text
-    
     const preservedElements: string[] = []
 
     // Handle Audio Player Placeholder
-    html = html.replace(/\[\[AUDIO_PLAYER:(.+?)\]\]/g, (match, url) => {
-      console.log('Found audio player tag:', url)
-      const playerHtml = `<div class="audio-player-container" style="display: block; margin: 16px 0; padding: 16px; background: #1a1a1a; border-radius: 8px; border: 1px solid #ff8c00;">
-        <div style="font-size: 14px; color: #ff8c00; margin-bottom: 12px; font-weight: 600; display: flex; align-items: center; gap: 8px;">
-          <i data-lucide="headphones" style="width: 16px; height: 16px;"></i> Audio Player
+    html = html.replace(/\[\[AUDIO_PLAYER:([^\]|]+)(?:\|([^\]]*))?\]\]/g, (match, url, script) => {
+      console.log('Found audio player tag:', url, 'with script:', script)
+      const playerHtml = `<div class="audio-player-container" style="display: block; margin: 16px 0; padding: 16px; background: #1a1a1a; border-radius: 8px; border: 1px solid #ff8c00;"${script ? ` data-script="${script.replace(/&/g, '&amp;').replace(/"/g, '&quot;')}"` : ''}>
+        <div style="font-size: 14px; color: #ff8c00; margin-bottom: 12px; font-weight: 600; display: flex; align-items: center; justify-content: space-between;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <i data-lucide="headphones" style="width: 16px; height: 16px;"></i> Audio Player
+          </div>
+          <button class="transcript-btn" style="background: transparent; border: none; color: #ff8c00; cursor: pointer; display: flex; align-items: center; gap: 4px; font-size: 12px; padding: 4px 8px; border-radius: 4px; transition: all 0.2s ease;" title="View Transcript">
+            <i data-lucide="file-text" style="width: 14px; height: 14px;"></i> Transcript
+          </button>
         </div>
-        <div class="spectrum-display" style="width: 100%; height: 120px; background: #0d0d0d; border-radius: 6px; display: flex; align-items: center; position: relative; margin-bottom: 12px;">
+        <div class="spectrum-display" style="width: 100%; height: 100px; background: #0d0d0d; border-radius: 6px; display: flex; align-items: center; position: relative; margin-bottom: 12px;">
           <button class="play-pause-btn" style="position: absolute; left: 20px; z-index: 10; background: rgba(255, 140, 0, 0.9); border: none; border-radius: 50%; width: 60px; height: 60px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s ease; color: white; font-size: 24px;">
             <i data-lucide="play" style="width: 24px; height: 24px;"></i>
           </button>
-          <canvas class="audio-spectrum" width="400" height="80" style="flex: 1; background: transparent; margin-left: 100px;"></canvas>
+          <canvas class="audio-spectrum" width="400" height="80" style="flex: 1;background: transparent;padding-right: 10px;"></canvas>
         </div>
         <div class="progress-container" style="width: 100%; height: 6px; background: #333; border-radius: 3px; cursor: pointer; position: relative;">
           <div class="progress-bar" style="height: 100%; background: #ff8c00; border-radius: 3px; width: 0%; transition: width 0.1s ease;"></div>
@@ -816,15 +820,28 @@ function initializeApp() {
         lastDataArray = new Uint8Array(dataArray) // Store last frame
 
         canvasContext.clearRect(0, 0, canvas.width, canvas.height)
-        canvasContext.fillStyle = '#ff8c00'
 
         const barWidth = (canvas.width / dataArray.length) * 2.5
         let barHeight
         let x = 0
 
+        // Calculate fade distances (first and last 15% of bars fade in)
+        const fadeCount = Math.floor(dataArray.length * 0.15)
+
         for (let i = 0; i < dataArray.length; i++) {
           barHeight = (dataArray[i] / 255) * canvas.height
 
+          // Calculate opacity based on position (fade in from edges)
+          let opacity = 1.0
+          if (i < fadeCount) {
+            // Fade in from left edge
+            opacity = i / fadeCount
+          } else if (i >= dataArray.length - fadeCount) {
+            // Fade in from right edge
+            opacity = (dataArray.length - 1 - i) / fadeCount
+          }
+
+          canvasContext.fillStyle = `rgba(255, 140, 0, ${opacity})`
           canvasContext.fillRect(x, canvas.height - barHeight, barWidth, barHeight)
 
           x += barWidth + 1
@@ -844,14 +861,28 @@ function initializeApp() {
       // Show the last frame dimmed when paused
       if (canvasContext && lastDataArray) {
         canvasContext.clearRect(0, 0, canvas.width, canvas.height)
-        canvasContext.fillStyle = 'rgba(255, 140, 0, 0.4)' // Dimmed color for paused state
         
         const barWidth = (canvas.width / lastDataArray.length) * 2.5
         let barHeight
         let x = 0
+
+        // Calculate fade distances (first and last 15% of bars fade in)
+        const fadeCount = Math.floor(lastDataArray.length * 0.15)
         
         for (let i = 0; i < lastDataArray.length; i++) {
           barHeight = (lastDataArray[i] / 255) * canvas.height
+          
+          // Calculate opacity based on position (fade in from edges)
+          let opacity = 0.4 // Base dimmed opacity
+          if (i < fadeCount) {
+            // Fade in from left edge
+            opacity = 0.4 * (i / fadeCount)
+          } else if (i >= lastDataArray.length - fadeCount) {
+            // Fade in from right edge
+            opacity = 0.4 * ((lastDataArray.length - 1 - i) / fadeCount)
+          }
+
+          canvasContext.fillStyle = `rgba(255, 140, 0, ${opacity})`
           canvasContext.fillRect(x, canvas.height - barHeight, barWidth, barHeight)
           x += barWidth + 1
         }
@@ -894,6 +925,102 @@ function initializeApp() {
       progressBar.style.width = '0%'
     })
     audioElement.addEventListener('timeupdate', updateProgress)
+  }
+
+  // Show transcript popup
+  function showTranscriptPopup(script: string) {
+    const modal = document.createElement('div')
+    modal.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+      backdrop-filter: blur(4px);
+    `
+
+    const dialog = document.createElement('div')
+    dialog.style.cssText = `
+      background: #0d0d0d;
+      border: 2px solid #ff8c00;
+      border-radius: 12px;
+      padding: 24px;
+      max-width: 600px;
+      width: 90%;
+      max-height: 80vh;
+      overflow-y: auto;
+      box-shadow: 0 8px 32px rgba(255, 140, 0, 0.3);
+    `
+
+    const title = document.createElement('h3')
+    title.textContent = 'Podcast Script'
+    title.style.cssText = `
+      margin: 0 0 16px 0;
+      color: #ff8c00;
+      font-size: 18px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    `
+    title.innerHTML = '<i data-lucide="file-text" style="width: 20px; height: 20px;"></i> Podcast Script'
+
+    const content = document.createElement('div')
+    content.style.cssText = `
+      color: #e0e0e0;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      font-family: inherit;
+      font-size: 14px;
+    `
+    content.textContent = script
+
+    const closeBtn = document.createElement('button')
+    closeBtn.textContent = 'Close'
+    closeBtn.style.cssText = `
+      background: #2a2a2a;
+      border: 1px solid #666;
+      border-radius: 6px;
+      padding: 10px 20px;
+      color: #e0e0e0;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      margin-top: 16px;
+    `
+    closeBtn.addEventListener('click', () => {
+      modal.remove()
+    })
+
+    dialog.appendChild(title)
+    dialog.appendChild(content)
+    dialog.appendChild(closeBtn)
+    modal.appendChild(dialog)
+    document.body.appendChild(modal)
+
+    // Initialize icons
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons({ root: modal })
+    }
+
+    // Close on escape
+    modal.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        modal.remove()
+      }
+    })
+
+    // Close on background click
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        modal.remove()
+      }
+    })
   }
 
   // Add message to chat
@@ -981,6 +1108,17 @@ function initializeApp() {
     // Initialize audio spectrum for any new audio players in this message
     const audioElements = messageWrapper.querySelectorAll('audio')
     audioElements.forEach(audio => initializeAudioSpectrum(audio as HTMLAudioElement))
+    
+    // Add event listeners for transcript buttons
+    const transcriptBtns = messageWrapper.querySelectorAll('.transcript-btn')
+    transcriptBtns.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation()
+        const container = btn.closest('.audio-player-container') as HTMLElement
+        const script = container?.getAttribute('data-script') || 'Script content not available for this audio player.'
+        showTranscriptPopup(script)
+      })
+    })
     
     // Initialize icons
     lucide.createIcons()
@@ -1281,7 +1419,6 @@ function initializeApp() {
     try {
       showTypingIndicator()
       if (currentPlatform === 'podcast') {
-        addChatMessage('🎙️ Generating podcast content...', false)
         const podcastResp = await podcastFromPrompt(appState.projectName, message, 5, 'Podcast Host')
         hideTypingIndicator()
         
@@ -1289,10 +1426,11 @@ function initializeApp() {
         const fullAudioUrl = podcastResp.audio_url ? `http://localhost:8080${podcastResp.audio_url}` : null
         let podcastChatMessage = '<span style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;"><i data-lucide="mic" style="width: 20px; height: 20px; color: #ff8c00;"></i> <strong style="font-size: 1.1em;">Podcast Generated</strong></span>\n\n'
         if (fullAudioUrl) {
-          podcastChatMessage += `[[AUDIO_PLAYER:${fullAudioUrl}]]\n\n`
+          podcastChatMessage += `[[AUDIO_PLAYER:${fullAudioUrl}|${podcastResp.script.replace(/\|/g, '\\|').replace(/\]/g, '\\]')}]]\n\n`
         }
-        podcastChatMessage += `<span style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;"><i data-lucide="file-text" style="width: 16px; height: 16px; color: #888;"></i> <strong>Script:</strong></span>\n${podcastResp.script}`
         addChatMessage(podcastChatMessage, false)
+        podcastChatMessage += `<span style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;"><i data-lucide="file-text" style="width: 16px; height: 16px; color: #888;"></i> <strong>Script:</strong></span>`
+  
         
         const podcastList = document.getElementById('podcastList')
         if (podcastList) {
@@ -1308,18 +1446,47 @@ function initializeApp() {
                 <strong style='color:#ff8c00;'>🎙️ ${podcastResp.insight_id.slice(0,8)}</strong>
                 <span style='font-size:11px; color:#666;'>${new Date().toLocaleTimeString()}</span>
               </div>
-              <div style='font-size:12px; color:#ccc; max-height:80px; overflow:auto;'>${podcastResp.script.substring(0,300).replace(/</g,'&lt;')}...</div>
-              ${fullAudioUrl ? `<audio controls style='width:100%;'>
-                  <source src='${fullAudioUrl}' type='audio/mpeg'>
-                  Your browser does not support audio.
-                </audio>` : `<div style='color:#888; font-size:12px;'>No audio generated (TTS unavailable)</div>`}
-              <button data-insight='${podcastResp.insight_id}' style='background:#ff8c00; border:none; color:#fff; padding:6px 10px; border-radius:4px; cursor:pointer; font-size:12px;'>Open Full Script</button>
-            `
-          const btn = item.querySelector('button')
-          btn?.addEventListener('click', () => {
-            addChatMessage(`📜 Full Script for ${podcastResp.insight_id}\n\n${podcastResp.script}`, false)
-          })
+              ${fullAudioUrl ? `<div class="audio-player-container" style="display: block; margin: 8px 0; padding: 8px; background: #1a1a1a; border-radius: 6px; border: 1px solid #ff8c00;" data-script="${podcastResp.script.replace(/"/g, '&quot;')}">
+                <div style="font-size: 11px; color: #ff8c00; margin-bottom: 6px; font-weight: 600; display: flex; align-items: center; justify-content: space-between;">
+                  <div style="display: flex; align-items: center; gap: 4px;">
+                    <i data-lucide="headphones" style="width: 12px; height: 12px;"></i> Audio
+                  </div>
+                  <button class="transcript-btn" style="background: transparent; border: none; color: #ff8c00; cursor: pointer; display: flex; align-items: center; gap: 2px; font-size: 10px; padding: 2px 6px; border-radius: 3px; transition: all 0.2s ease;" title="View Transcript">
+                    <i data-lucide="file-text" style="width: 12px; height: 12px;"></i> Transcript
+                  </button>
+                </div>
+                <div class="spectrum-display" style="width: 98%;height: 60px;background: #0d0d0d;border-radius: 4px;display: flex;align-items: center;position: relative;margin-bottom: 6px;padding-right: 5px;">
+                  <button class="play-pause-btn" style="position: absolute; left: 10px; z-index: 10; background: rgba(255, 140, 0, 0.9); border: none; border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s ease; color: white; font-size: 12px;">
+                    <i data-lucide="play" style="width: 12px; height: 12px;"></i>
+                  </button>
+                  <canvas class="audio-spectrum" width="160" height="40" style="flex: 1; background: transparent; margin-left: 45px;"></canvas>
+                </div>
+                <div class="progress-container" style="width: 100%; height: 3px; background: #333; border-radius: 2px; cursor: pointer; position: relative;">
+                  <div class="progress-bar" style="height: 100%; background: #ff8c00; border-radius: 2px; width: 0%; transition: width 0.1s ease;"></div>
+                </div>
+                <audio preload="metadata" style="display: none;">
+                  <source src="${fullAudioUrl}" type="audio/mpeg">
+                </audio>
+              </div>` : `<div style='color:#888; font-size:12px;'>No audio generated (TTS unavailable)</div>`}
+            `          
           podcastList.prepend(item)
+          
+          // Initialize audio spectrum and icons for the new item
+          const audioElements = item.querySelectorAll('audio')
+          audioElements.forEach(audio => initializeAudioSpectrum(audio as HTMLAudioElement))
+          if (typeof lucide !== 'undefined') {
+            lucide.createIcons({ root: item })
+          }
+          
+          // Add event listener for transcript button
+          const transcriptBtn = item.querySelector('.transcript-btn') as HTMLButtonElement
+          if (transcriptBtn) {
+            transcriptBtn.addEventListener('click', (e) => {
+              e.stopPropagation()
+              const script = item.querySelector('.audio-player-container')?.getAttribute('data-script') || 'Script not available'
+              showTranscriptPopup(script)
+            })
+          }
         }
       } else {
         const analysisResponse = await analyzeChunksWithGemini(appState.cacheKey, persona, task, 5, 5)
