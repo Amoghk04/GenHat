@@ -10,6 +10,9 @@ import {
 
 import { PDFViewer } from './pdfViewer.js'
 
+// Declare lucide global
+declare const lucide: any
+
 type FileEntry = {
   name: string
   file: File
@@ -225,7 +228,7 @@ function initializeApp() {
   tabs.set('default', {
     id: 'default',
     name: 'Chat',
-    icon: '💬',
+    icon: 'message-square',
     type: 'chat',
     messages: [],
     platform: null,
@@ -246,7 +249,7 @@ function initializeApp() {
   // Tab management functions
   function createNewTab(type: 'chat' | 'mindmap' | 'podcast'): string {
     const tabId = `tab-${tabCounter++}`
-    const icon = type === 'chat' ? '💬' : type === 'mindmap' ? '🧠' : '🎙️'
+    const icon = type === 'chat' ? 'message-square' : type === 'mindmap' ? 'brain' : 'podcast'
     const typeName = type === 'chat' ? 'Chat' : type === 'mindmap' ? 'Mind Map' : 'Podcast'
     const tabName = `${typeName} ${tabs.size}`
     
@@ -313,8 +316,12 @@ function initializeApp() {
     if (chatMessages.length === 0 && !tab.isTyping) {
       const welcome = document.createElement('div')
       welcome.style.cssText = 'text-align: center; color: #666; margin-top: 20px;'
-      const emoji = tab.type === 'mindmap' ? '🧠' : tab.type === 'podcast' ? '🎙️' : '💬'
-      welcome.innerHTML = `<div style="font-size: 48px; margin-bottom: 12px;">${emoji}</div><p style="font-size: 16px;">Start a conversation...</p>`
+      const iconName = tab.type === 'mindmap' ? 'brain' : tab.type === 'podcast' ? 'podcast' : 'message-square'
+      welcome.innerHTML = `<div style="margin-bottom: 12px;"><i data-lucide="${iconName}" style="width: 48px; height: 48px; color: #ff8c00;"></i></div><p style="font-size: 16px;">Start a conversation...</p>`
+      // Initialize the icon
+      if (typeof lucide !== 'undefined') {
+        lucide.createIcons({ nameAttr: 'data-lucide' })
+      }
       chatContainerEl.appendChild(welcome)
     } else {
       // Rebuild messages for this tab
@@ -363,9 +370,11 @@ function initializeApp() {
         tabEl.setAttribute('draggable', 'true')
       }
       
-      const iconEl = document.createElement('span')
+      const iconEl = document.createElement('i')
       iconEl.className = 'tab-icon'
-      iconEl.textContent = tab.icon
+      iconEl.setAttribute('data-lucide', tab.icon)
+      iconEl.style.width = '16px'
+      iconEl.style.height = '16px'
       
       const labelEl = document.createElement('span')
       labelEl.className = 'tab-label'
@@ -443,6 +452,11 @@ function initializeApp() {
       tabsContainerEl.appendChild(tabEl)
     }
 
+    // Initialize Lucide icons for tabs
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons({ nameAttr: 'data-lucide' })
+    }
+
     // Update scroll indicators after rendering tabs
     setTimeout(() => updateScrollIndicators(), 50)
   }
@@ -465,7 +479,7 @@ function initializeApp() {
 
     switch (platform) {
       case 'mindmap':
-        title = '🧠 Mind Map Options'
+        title = 'Mind Map Options'
         content = `
           <div style="display: flex; flex-direction: column; gap: 12px;">
             <p style="color: #e0e0e0;">Create a mind map from your documents:</p>
@@ -479,7 +493,7 @@ function initializeApp() {
         `
         break
       case 'podcast':
-        title = '🎙️ Podcast Options'
+        title = 'Podcast Options'
         content = `
           <div style="display: flex; flex-direction: column; gap: 12px;">
             <p style="color: #e0e0e0;">Generate or play podcasts:</p>
@@ -517,7 +531,10 @@ function initializeApp() {
 
   // Open PDF viewer in popup with text selection support
   function openPDFViewer(entry: FileEntry) {
-    popupTitle!.textContent = `📄 ${entry.name}`
+    popupTitle!.innerHTML = `<i data-lucide="file-text" style="width: 18px; height: 18px; display: inline-block; vertical-align: middle; margin-right: 6px;"></i>${entry.name}`
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons({ nameAttr: 'data-lucide' })
+    }
     
     // Create container for PDF viewer
     popupBody!.innerHTML = `
@@ -1237,7 +1254,10 @@ function initializeApp() {
       // Create thumbnail container
       const thumbnailDiv = document.createElement('div')
       thumbnailDiv.className = 'file-thumbnail'
-      thumbnailDiv.innerHTML = '<div style="font-size: 48px;">📄</div>' // Placeholder icon
+      thumbnailDiv.innerHTML = '<i data-lucide="file-text" style="width: 48px; height: 48px; color: #ff8c00;"></i>'
+      if (typeof lucide !== 'undefined') {
+        lucide.createIcons({ nameAttr: 'data-lucide' })
+      }
       
       // Add numbering
       const numberSpan = document.createElement('span')
@@ -1406,12 +1426,12 @@ function initializeApp() {
 
   newMindmapBtn!.addEventListener('click', () => {
     const tabId = createNewTab('mindmap')
-    addChatMessage('🧠 Mind Map Mode - Describe the concepts you want to map, and I\'ll create a visual mind map from your documents.', false)
+    addChatMessage('Mind Map Mode - Describe the concepts you want to map, and I\'ll create a visual mind map from your documents.', false)
   })
 
   newPodcastBtn!.addEventListener('click', () => {
     const tabId = createNewTab('podcast')
-    addChatMessage('🎙️ Podcast Mode - I can create or discuss podcast content based on your documents. What would you like to explore?', false)
+    addChatMessage('Podcast Mode - I can create or discuss podcast content based on your documents. What would you like to explore?', false)
   })
 
   // Chat input enter key
