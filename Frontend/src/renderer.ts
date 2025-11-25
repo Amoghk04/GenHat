@@ -1554,6 +1554,11 @@ function initializeApp() {
         const podcastResp = await podcastFromPrompt(appState.projectName, message, 5, 'Podcast Host')
         hideTypingIndicator()
         
+        // Parse title from script
+        const script = podcastResp.script
+        const titleMatch = script.match(/^Title:\s*(.+)$/m)
+        const title = titleMatch ? titleMatch[1].trim() : `Podcast ${podcastResp.insight_id.slice(0,8)}`
+        
         // Build chat message with embedded audio player
         const fullAudioUrl = podcastResp.audio_url ? `http://localhost:8080${podcastResp.audio_url}` : null
         let podcastChatMessage = '<span style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;"><i data-lucide="mic" style="width: 20px; height: 20px; color: #ff8c00;"></i> <strong style="font-size: 1.1em;">Podcast Generated</strong></span>\n\n'
@@ -1562,7 +1567,7 @@ function initializeApp() {
         }
         addChatMessage(podcastChatMessage, false)
         podcastChatMessage += `<span style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;"><i data-lucide="file-text" style="width: 16px; height: 16px; color: #888;"></i> <strong>Script:</strong></span>`
-  
+ 
         
         const podcastList = document.getElementById('podcastList')
         if (podcastList) {
@@ -1575,7 +1580,7 @@ function initializeApp() {
             const fullAudioUrl = podcastResp.audio_url ? `http://localhost:8080${podcastResp.audio_url}` : null
             item.innerHTML = `
               <div style='display:flex; justify-content:space-between; align-items:center;'>
-                <strong style='color:#ff8c00;'>🎙️ ${podcastResp.insight_id.slice(0,8)}</strong>
+                <strong style='color:#ff8c00;'>🎙️ ${title}</strong>
                 <span style='font-size:11px; color:#666;'>${new Date().toLocaleTimeString()}</span>
               </div>
               ${fullAudioUrl ? `<div class="audio-player-container" style="display: block; margin: 8px 0; padding: 8px; background: #1a1a1a; border-radius: 6px; border: 1px solid #ff8c00;" data-script="${podcastResp.script.replace(/"/g, '&quot;')}">
