@@ -52,21 +52,15 @@
         overflow-y: hidden;
         align-items: flex-end;
         height: 44px;
-        scrollbar-width: thin;
-        scrollbar-color: #3a3a3a #1a1a1a;
+        scrollbar-width: none;
+        flex-wrap: nowrap;
+        width: 100%;
+        box-sizing: border-box;
+        -ms-overflow-style: none;
       }
 
       .tabs-container::-webkit-scrollbar {
-        height: 6px;
-      }
-
-      .tabs-container::-webkit-scrollbar-track {
-        background: #1a1a1a;
-      }
-
-      .tabs-container::-webkit-scrollbar-thumb {
-        background: #3a3a3a;
-        border-radius: 3px;
+        display: none;
       }
 
       .tab {
@@ -76,7 +70,7 @@
         background: #2a2a2a;
         border: 1px solid #3a3a3a;
         border-bottom: 1px solid #2a2a2a;
-        border-radius: 24px 24px 0 0;
+        border-radius: 8px 8px 0 0;
         padding: 8px 16px;
         cursor: pointer;
         transition: all 0.15s ease;
@@ -87,6 +81,7 @@
         min-width: 100px;
         max-width: 220px;
         position: relative;
+        flex-shrink: 0;
       }
 
       .tab:hover {
@@ -180,6 +175,50 @@
       .add-tab-btn:hover {
         color: #ff8c00;
         background: rgba(255, 140, 0, 0.1);
+      }
+
+      /* Tabs wrapper with scroll indicators */
+      .tabs-wrapper {
+        position: relative;
+        display: flex;
+        align-items: flex-end;
+      }
+
+      .scroll-indicator {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 40px;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(90deg, #1a1a1a 0%, transparent 100%);
+        z-index: 100;
+        pointer-events: auto;
+        color: #ff8c00;
+        font-size: 20px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+
+      .scroll-indicator:hover {
+        color: #ff6b00;
+        font-size: 24px;
+      }
+
+      .scroll-indicator.left {
+        left: 0;
+        background: linear-gradient(90deg, #1a1a1a 0%, transparent 100%);
+      }
+
+      .scroll-indicator.right {
+        right: 0;
+        background: linear-gradient(270deg, #1a1a1a 0%, transparent 100%);
+      }
+
+      .scroll-indicator.visible {
+        display: flex;
       }
 
       /* File card styles */
@@ -941,9 +980,13 @@
       </div>
 
       <!-- Right Section: Chat Window with Tabs -->
-      <div style="flex: 1; display: flex; flex-direction: column; gap: 0;">
+      <div style="flex: 1; display: flex; flex-direction: column; gap: 0; min-width: 0; overflow: hidden;">
         <!-- Tab Bar -->
-        <div class="tabs-container" id="tabsContainer"></div>
+        <div class="tabs-wrapper">
+          <div class="scroll-indicator left" id="scrollLeftIndicator">‹</div>
+          <div class="tabs-container" id="tabsContainer"></div>
+          <div class="scroll-indicator right" id="scrollRightIndicator">›</div>
+        </div>
 
         <!-- Chat Messages Area -->
         <div id="chatContainer" style="flex: 1; background: #0d0d0d; border: 1px solid #2a2a2a; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; max-height: calc(100vh - 160px);"></div>

@@ -132,6 +132,55 @@ function initializeApp() {
 
   tabsContainerEl.addEventListener('wheel', handleTabWheel, { passive: false })
 
+  // Function to update scroll indicators visibility
+  function updateScrollIndicators() {
+    const leftIndicator = document.getElementById('scrollLeftIndicator')
+    const rightIndicator = document.getElementById('scrollRightIndicator')
+    
+    if (!leftIndicator || !rightIndicator || !tabsContainerEl) return
+
+    const scrollLeft = tabsContainerEl.scrollLeft
+    const scrollWidth = tabsContainerEl.scrollWidth
+    const clientWidth = tabsContainerEl.clientWidth
+
+    // Show left indicator if we can scroll left
+    if (scrollLeft > 5) {
+      leftIndicator.classList.add('visible')
+    } else {
+      leftIndicator.classList.remove('visible')
+    }
+
+    // Show right indicator if we can scroll right
+    if (scrollLeft < scrollWidth - clientWidth - 5) {
+      rightIndicator.classList.add('visible')
+    } else {
+      rightIndicator.classList.remove('visible')
+    }
+  }
+
+  // Update scroll indicators on scroll
+  tabsContainerEl.addEventListener('scroll', updateScrollIndicators)
+
+  // Add click handlers for scroll indicators
+  const leftIndicator = document.getElementById('scrollLeftIndicator')
+  const rightIndicator = document.getElementById('scrollRightIndicator')
+
+  if (leftIndicator) {
+    leftIndicator.addEventListener('click', () => {
+      if (tabsContainerEl) {
+        tabsContainerEl.scrollBy({ left: -200, behavior: 'smooth' })
+      }
+    })
+  }
+
+  if (rightIndicator) {
+    rightIndicator.addEventListener('click', () => {
+      if (tabsContainerEl) {
+        tabsContainerEl.scrollBy({ left: 200, behavior: 'smooth' })
+      }
+    })
+  }
+
   tabsContainerEl.addEventListener('dragover', (event) => {
     if (!draggedTabId) {
       return
@@ -393,6 +442,9 @@ function initializeApp() {
 
       tabsContainerEl.appendChild(tabEl)
     }
+
+    // Update scroll indicators after rendering tabs
+    setTimeout(() => updateScrollIndicators(), 50)
   }
 
   function clearObjectURLs() {
