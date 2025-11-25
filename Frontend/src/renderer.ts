@@ -11,6 +11,9 @@ import {
 
 import { PDFViewer } from './pdfViewer.js'
 
+// Declare lucide global
+declare const lucide: any
+
 type FileEntry = {
   name: string
   file: File
@@ -133,6 +136,55 @@ function initializeApp() {
 
   tabsContainerEl.addEventListener('wheel', handleTabWheel, { passive: false })
 
+  // Function to update scroll indicators visibility
+  function updateScrollIndicators() {
+    const leftIndicator = document.getElementById('scrollLeftIndicator')
+    const rightIndicator = document.getElementById('scrollRightIndicator')
+    
+    if (!leftIndicator || !rightIndicator || !tabsContainerEl) return
+
+    const scrollLeft = tabsContainerEl.scrollLeft
+    const scrollWidth = tabsContainerEl.scrollWidth
+    const clientWidth = tabsContainerEl.clientWidth
+
+    // Show left indicator if we can scroll left
+    if (scrollLeft > 5) {
+      leftIndicator.classList.add('visible')
+    } else {
+      leftIndicator.classList.remove('visible')
+    }
+
+    // Show right indicator if we can scroll right
+    if (scrollLeft < scrollWidth - clientWidth - 5) {
+      rightIndicator.classList.add('visible')
+    } else {
+      rightIndicator.classList.remove('visible')
+    }
+  }
+
+  // Update scroll indicators on scroll
+  tabsContainerEl.addEventListener('scroll', updateScrollIndicators)
+
+  // Add click handlers for scroll indicators
+  const leftIndicator = document.getElementById('scrollLeftIndicator')
+  const rightIndicator = document.getElementById('scrollRightIndicator')
+
+  if (leftIndicator) {
+    leftIndicator.addEventListener('click', () => {
+      if (tabsContainerEl) {
+        tabsContainerEl.scrollBy({ left: -200, behavior: 'smooth' })
+      }
+    })
+  }
+
+  if (rightIndicator) {
+    rightIndicator.addEventListener('click', () => {
+      if (tabsContainerEl) {
+        tabsContainerEl.scrollBy({ left: 200, behavior: 'smooth' })
+      }
+    })
+  }
+
   tabsContainerEl.addEventListener('dragover', (event) => {
     if (!draggedTabId) {
       return
@@ -177,7 +229,7 @@ function initializeApp() {
   tabs.set('default', {
     id: 'default',
     name: 'Chat',
-    icon: '💬',
+    icon: 'message-square',
     type: 'chat',
     messages: [],
     platform: null,
@@ -198,7 +250,7 @@ function initializeApp() {
   // Tab management functions
   function createNewTab(type: 'chat' | 'mindmap' | 'podcast'): string {
     const tabId = `tab-${tabCounter++}`
-    const icon = type === 'chat' ? '💬' : type === 'mindmap' ? '🧠' : '🎙️'
+    const icon = type === 'chat' ? 'message-square' : type === 'mindmap' ? 'brain' : 'podcast'
     const typeName = type === 'chat' ? 'Chat' : type === 'mindmap' ? 'Mind Map' : 'Podcast'
     const tabName = `${typeName} ${tabs.size}`
     
@@ -265,8 +317,12 @@ function initializeApp() {
     if (chatMessages.length === 0 && !tab.isTyping) {
       const welcome = document.createElement('div')
       welcome.style.cssText = 'text-align: center; color: #666; margin-top: 20px;'
-      const emoji = tab.type === 'mindmap' ? '🧠' : tab.type === 'podcast' ? '🎙️' : '💬'
-      welcome.innerHTML = `<div style="font-size: 48px; margin-bottom: 12px;">${emoji}</div><p style="font-size: 16px;">Start a conversation...</p>`
+      const iconName = tab.type === 'mindmap' ? 'brain' : tab.type === 'podcast' ? 'podcast' : 'message-square'
+      welcome.innerHTML = `<div style="margin-bottom: 12px;"><i data-lucide="${iconName}" style="width: 48px; height: 48px; color: #ff8c00;"></i></div><p style="font-size: 16px;">Start a conversation...</p>`
+      // Initialize the icon
+      if (typeof lucide !== 'undefined') {
+        lucide.createIcons({ nameAttr: 'data-lucide' })
+      }
       chatContainerEl.appendChild(welcome)
     } else {
       // Rebuild messages for this tab
@@ -310,16 +366,30 @@ function initializeApp() {
       const tabEl = document.createElement('div')
       tabEl.className = `tab ${tab.id === activeTabId ? 'active' : ''}`
       tabEl.dataset.tabId = tab.id
-      tabEl.draggable = true
-
-      // Tab inner HTML
-      tabEl.innerHTML = `
-        <span class="tab-icon">${tab.icon}</span>
-        <span class="tab-name">${tab.name}</span>
-        ${tabs.size > 1 ? '<button class="tab-close" title="Close">×</button>' : ''}
-      `
-
-      // Click to activate
+      if (tabs.size > 1) {
+        tabEl.setAttribute('draggable', 'true')
+      }
+      
+      const iconEl = document.createElement('i')
+      iconEl.className = 'tab-icon'
+      iconEl.setAttribute('data-lucide', tab.icon)
+      iconEl.style.width = '16px'
+      iconEl.style.height = '16px'
+      
+      const labelEl = document.createElement('span')
+      labelEl.className = 'tab-label'
+      labelEl.textContent = tab.name
+      
+      const closeEl = document.createElement('div')
+      closeEl.className = 'tab-close'
+      closeEl.innerHTML = '×'
+      
+      tabEl.appendChild(iconEl)
+      tabEl.appendChild(labelEl)
+      if (tabs.size > 1) {
+        tabEl.appendChild(closeEl)
+      }
+      
       tabEl.addEventListener('click', (e) => {
         if ((e.target as HTMLElement).classList.contains('tab-close')) return
         switchToTab(tab.id)
@@ -374,11 +444,90 @@ function initializeApp() {
 
       tabsContainerEl.appendChild(tabEl)
     }
+
+    // Initialize Lucide icons for tabs
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons({ nameAttr: 'data-lucide' })
+    }
+
+    // Update scroll indicators after rendering tabs
+    setTimeout(() => updateScrollIndicators(), 50)
+  }
+
+  function clearObjectURLs() {
+    for (const f of files) {
+      if (f.url) {
+        try { URL.revokeObjectURL(f.url) } catch (_) { }
+        delete f.url
+      }
+    }
+  }
+
+  // Show popup modal with platform-specific options
+  function showPopup(platform: Platform) {
+    currentPlatform = platform
+
+    let title = ''
+    let content = ''
+
+    switch (platform) {
+      case 'mindmap':
+        title = 'Mind Map Options'
+        content = `
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            <p style="color: #e0e0e0;">Create a mind map from your documents:</p>
+            <button style="background: linear-gradient(135deg, #ff8c00 0%, #ff6b00 100%); border: none; border-radius: 6px; padding: 10px 20px; color: white; font-weight: 600; cursor: pointer;">
+              Generate Mind Map
+            </button>
+            <button style="background: #2a2a2a; border: 1px solid #ff8c00; border-radius: 6px; padding: 10px 20px; color: #ff8c00; font-weight: 600; cursor: pointer;">
+              Upload Existing Mind Map
+            </button>
+          </div>
+        `
+        break
+      case 'podcast':
+        title = 'Podcast Options'
+        content = `
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            <p style="color: #e0e0e0;">Generate or play podcasts:</p>
+            <button style="background: linear-gradient(135deg, #ff8c00 0%, #ff6b00 100%); border: none; border-radius: 6px; padding: 10px 20px; color: white; font-weight: 600; cursor: pointer;">
+              Generate Podcast from PDF
+            </button>
+            <button style="background: #2a2a2a; border: 1px solid #ff8c00; border-radius: 6px; padding: 10px 20px; color: #ff8c00; font-weight: 600; cursor: pointer;">
+              Upload Audio File
+            </button>
+          </div>
+        `
+        break
+      case 'more':
+        title = '⚙️ More Options'
+        content = `
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            <button style="background: #2a2a2a; border: 1px solid #ff8c00; border-radius: 6px; padding: 10px 20px; color: #ff8c00; font-weight: 600; cursor: pointer; text-align: left;">
+              ⚙️ Settings
+            </button>
+            <button style="background: #2a2a2a; border: 1px solid #ff8c00; border-radius: 6px; padding: 10px 20px; color: #ff8c00; font-weight: 600; cursor: pointer; text-align: left;">
+              📤 Export Data
+            </button>
+            <button style="background: #2a2a2a; border: 1px solid #ff8c00; border-radius: 6px; padding: 10px 20px; color: #ff8c00; font-weight: 600; cursor: pointer; text-align: left;">
+              ℹ️ About GenHat
+            </button>
+          </div>
+        `
+        break
+    }
+
+    popupTitle!.textContent = title
+    popupBody!.innerHTML = content
+    popupModal!.classList.add('active')
   }
 
   // Open PDF viewer in popup with text selection support
   function openPDFViewer(entry: FileEntry) {
-    popupTitle!.textContent = `📄 ${entry.name}`
+    popupTitle!.innerHTML = `<i data-lucide="file-text" style="width: 18px; height: 18px; display: inline-block; vertical-align: middle; margin-right: 6px;"></i>${entry.name}`
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons({ nameAttr: 'data-lucide' })
+    }
     
     // Create container for PDF viewer
     popupBody!.innerHTML = `
@@ -1095,7 +1244,10 @@ function initializeApp() {
       // Create thumbnail container
       const thumbnailDiv = document.createElement('div')
       thumbnailDiv.className = 'file-thumbnail'
-      thumbnailDiv.innerHTML = '<div style="font-size: 48px;">📄</div>' // Placeholder icon
+      thumbnailDiv.innerHTML = '<i data-lucide="file-text" style="width: 48px; height: 48px; color: #ff8c00;"></i>'
+      if (typeof lucide !== 'undefined') {
+        lucide.createIcons({ nameAttr: 'data-lucide' })
+      }
       
       // Add numbering
       const numberSpan = document.createElement('span')
@@ -1264,12 +1416,12 @@ function initializeApp() {
 
   newMindmapBtn!.addEventListener('click', () => {
     const tabId = createNewTab('mindmap')
-    addChatMessage('🧠 Mind Map Mode - Describe the concepts you want to map, and I\'ll create a visual mind map from your documents.', false)
+    addChatMessage('Mind Map Mode - Describe the concepts you want to map, and I\'ll create a visual mind map from your documents.', false)
   })
 
   newPodcastBtn!.addEventListener('click', () => {
     const tabId = createNewTab('podcast')
-    addChatMessage('🎙️ Podcast Mode - I can create or discuss podcast content based on your documents. What would you like to explore?', false)
+    addChatMessage('Podcast Mode - I can create or discuss podcast content based on your documents. What would you like to explore?', false)
   })
 
   // Chat input enter key
@@ -1335,11 +1487,6 @@ function initializeApp() {
   window.addEventListener('beforeunload', () => {
     clearObjectURLs()
   })
-
-  // Release any object URLs created for file previews
-  function clearObjectURLs() {
-    files.forEach(f => { if (f.url) URL.revokeObjectURL(f.url) })
-  }
 }
 
 // Run initialization when DOM is ready or immediately if already loaded
