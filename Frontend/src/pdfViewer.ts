@@ -3,6 +3,7 @@
 
 // Type declarations for PDF.js global
 declare const pdfjsLib: any
+declare const lucide: any
 
 export interface PDFViewerOptions {
   container: HTMLElement
@@ -64,14 +65,14 @@ export class PDFViewer {
         <!-- Toolbar -->
         <div id="pdfToolbar" style="display: flex; align-items: center; justify-content: space-between; padding: 12px; background: #0d0d0d; border-bottom: 1px solid #2a2a2a;">
           <div style="display: flex; align-items: center; gap: 8px;">
-            <button id="prevPage" style="background: #2a2a2a; border: 1px solid #3a3a3a; color: #e0e0e0; padding: 6px 12px; border-radius: 4px; cursor: pointer;">◀</button>
+            <button id="prevPage" style="background: #2a2a2a; border: 1px solid #3a3a3a; color: #e0e0e0; padding: 6px 12px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center;"><i data-lucide="chevron-left" style="width: 16px; height: 16px;"></i></button>
             <span id="pageInfo" style="color: #e0e0e0; font-size: 14px;">Page 1 of ${this.pdf.numPages}</span>
-            <button id="nextPage" style="background: #2a2a2a; border: 1px solid #3a3a3a; color: #e0e0e0; padding: 6px 12px; border-radius: 4px; cursor: pointer;">▶</button>
+            <button id="nextPage" style="background: #2a2a2a; border: 1px solid #3a3a3a; color: #e0e0e0; padding: 6px 12px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center;"><i data-lucide="chevron-right" style="width: 16px; height: 16px;"></i></button>
           </div>
           <div style="display: flex; align-items: center; gap: 8px;">
-            <button id="zoomOut" style="background: #2a2a2a; border: 1px solid #3a3a3a; color: #e0e0e0; padding: 6px 12px; border-radius: 4px; cursor: pointer;">−</button>
+            <button id="zoomOut" style="background: #2a2a2a; border: 1px solid #3a3a3a; color: #e0e0e0; padding: 6px 12px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center;"><i data-lucide="minus" style="width: 16px; height: 16px;"></i></button>
             <span style="color: #e0e0e0; font-size: 14px;">${Math.round(this.scale * 100)}%</span>
-            <button id="zoomIn" style="background: #2a2a2a; border: 1px solid #3a3a3a; color: #e0e0e0; padding: 6px 12px; border-radius: 4px; cursor: pointer;">+</button>
+            <button id="zoomIn" style="background: #2a2a2a; border: 1px solid #3a3a3a; color: #e0e0e0; padding: 6px 12px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center;"><i data-lucide="plus" style="width: 16px; height: 16px;"></i></button>
           </div>
         </div>
         
@@ -84,6 +85,14 @@ export class PDFViewer {
         </div>
       </div>
     `
+
+    // Initialize icons
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons({
+        root: this.container,
+        nameAttr: 'data-lucide'
+      })
+    }
 
     // Setup event listeners
     this.setupEventListeners()

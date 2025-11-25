@@ -5,10 +5,14 @@ import {
   cachePDFs,
   waitForCacheReadyWithProgress,
   analyzeChunksWithGemini,
-  removePDF
+  removePDF,
+  podcastFromPrompt
 } from './api.js'
 
 import { PDFViewer } from './pdfViewer.js'
+
+// Declare lucide global
+declare const lucide: any
 
 type FileEntry = {
   name: string
@@ -132,6 +136,55 @@ function initializeApp() {
 
   tabsContainerEl.addEventListener('wheel', handleTabWheel, { passive: false })
 
+  // Function to update scroll indicators visibility
+  function updateScrollIndicators() {
+    const leftIndicator = document.getElementById('scrollLeftIndicator')
+    const rightIndicator = document.getElementById('scrollRightIndicator')
+    
+    if (!leftIndicator || !rightIndicator || !tabsContainerEl) return
+
+    const scrollLeft = tabsContainerEl.scrollLeft
+    const scrollWidth = tabsContainerEl.scrollWidth
+    const clientWidth = tabsContainerEl.clientWidth
+
+    // Show left indicator if we can scroll left
+    if (scrollLeft > 5) {
+      leftIndicator.classList.add('visible')
+    } else {
+      leftIndicator.classList.remove('visible')
+    }
+
+    // Show right indicator if we can scroll right
+    if (scrollLeft < scrollWidth - clientWidth - 5) {
+      rightIndicator.classList.add('visible')
+    } else {
+      rightIndicator.classList.remove('visible')
+    }
+  }
+
+  // Update scroll indicators on scroll
+  tabsContainerEl.addEventListener('scroll', updateScrollIndicators)
+
+  // Add click handlers for scroll indicators
+  const leftIndicator = document.getElementById('scrollLeftIndicator')
+  const rightIndicator = document.getElementById('scrollRightIndicator')
+
+  if (leftIndicator) {
+    leftIndicator.addEventListener('click', () => {
+      if (tabsContainerEl) {
+        tabsContainerEl.scrollBy({ left: -200, behavior: 'smooth' })
+      }
+    })
+  }
+
+  if (rightIndicator) {
+    rightIndicator.addEventListener('click', () => {
+      if (tabsContainerEl) {
+        tabsContainerEl.scrollBy({ left: 200, behavior: 'smooth' })
+      }
+    })
+  }
+
   tabsContainerEl.addEventListener('dragover', (event) => {
     if (!draggedTabId) {
       return
@@ -176,7 +229,7 @@ function initializeApp() {
   tabs.set('default', {
     id: 'default',
     name: 'Chat',
-    icon: '💬',
+    icon: 'message-square',
     type: 'chat',
     messages: [],
     platform: null,
@@ -197,7 +250,7 @@ function initializeApp() {
   // Tab management functions
   function createNewTab(type: 'chat' | 'mindmap' | 'podcast'): string {
     const tabId = `tab-${tabCounter++}`
-    const icon = type === 'chat' ? '💬' : type === 'mindmap' ? '🧠' : '🎙️'
+    const icon = type === 'chat' ? 'message-square' : type === 'mindmap' ? 'brain' : 'podcast'
     const typeName = type === 'chat' ? 'Chat' : type === 'mindmap' ? 'Mind Map' : 'Podcast'
     const tabName = `${typeName} ${tabs.size}`
     
@@ -264,8 +317,12 @@ function initializeApp() {
     if (chatMessages.length === 0 && !tab.isTyping) {
       const welcome = document.createElement('div')
       welcome.style.cssText = 'text-align: center; color: #666; margin-top: 20px;'
-      const emoji = tab.type === 'mindmap' ? '🧠' : tab.type === 'podcast' ? '🎙️' : '💬'
-      welcome.innerHTML = `<div style="font-size: 48px; margin-bottom: 12px;">${emoji}</div><p style="font-size: 16px;">Start a conversation...</p>`
+      const iconName = tab.type === 'mindmap' ? 'brain' : tab.type === 'podcast' ? 'podcast' : 'message-square'
+      welcome.innerHTML = `<div style="margin-bottom: 12px;"><i data-lucide="${iconName}" style="width: 48px; height: 48px; color: #ff8c00;"></i></div><p style="font-size: 16px;">Start a conversation...</p>`
+      // Initialize the icon
+      if (typeof lucide !== 'undefined') {
+        lucide.createIcons({ nameAttr: 'data-lucide' })
+      }
       chatContainerEl.appendChild(welcome)
     } else {
       // Rebuild messages for this tab
@@ -301,11 +358,10 @@ function initializeApp() {
 
   function renderTabs() {
     if (!tabsContainerEl) return
-
     // Clear existing tabs
     tabsContainerEl.innerHTML = ''
 
-    // Create tabs
+    // Create each tab element
     for (const tab of tabs.values()) {
       const tabEl = document.createElement('div')
       tabEl.className = `tab ${tab.id === activeTabId ? 'active' : ''}`
@@ -314,9 +370,11 @@ function initializeApp() {
         tabEl.setAttribute('draggable', 'true')
       }
       
-      const iconEl = document.createElement('span')
+      const iconEl = document.createElement('i')
       iconEl.className = 'tab-icon'
-      iconEl.textContent = tab.icon
+      iconEl.setAttribute('data-lucide', tab.icon)
+      iconEl.style.width = '16px'
+      iconEl.style.height = '16px'
       
       const labelEl = document.createElement('span')
       labelEl.className = 'tab-label'
@@ -333,66 +391,67 @@ function initializeApp() {
       }
       
       tabEl.addEventListener('click', (e) => {
-        if ((e.target as HTMLElement).classList.contains('tab-close')) {
+        if ((e.target as HTMLElement).classList.contains('tab-close')) return
+        switchToTab(tab.id)
+      })
+
+      // Close button
+      const closeBtn = tabEl.querySelector('.tab-close') as HTMLButtonElement | null
+      if (closeBtn) {
+        closeBtn.addEventListener('click', (e) => {
+          e.stopPropagation()
           closeTab(tab.id)
-        } else {
-          switchToTab(tab.id)
-        }
-      })
+        })
+      }
 
-      tabEl.addEventListener('dragstart', (event) => {
-        if (tabs.size <= 1) {
-          return
-        }
-
+      // Drag start
+      tabEl.addEventListener('dragstart', (e) => {
         draggedTabId = tab.id
-        tabEl.classList.add('dragging')
-        event.dataTransfer?.setData('text/plain', tab.id)
-        event.dataTransfer?.setDragImage(tabEl, 20, 20)
+        e.dataTransfer?.setData('text/plain', tab.id)
+        e.dataTransfer?.setDragImage(tabEl, 10, 10)
       })
 
-      tabEl.addEventListener('dragend', () => {
-        tabEl.classList.remove('dragging', 'drag-over-before', 'drag-over-after')
-        draggedTabId = null
+      // Drag over other tab
+      tabEl.addEventListener('dragover', (e) => {
+        if (!draggedTabId || draggedTabId === tab.id) return
+        e.preventDefault()
+        const bounding = tabEl.getBoundingClientRect()
+        const offset = e.clientX - bounding.left
+        const dropBefore = offset < bounding.width / 2
+        ;(tabEl as any).dataset.dropPosition = dropBefore ? 'before' : 'after'
       })
 
-      tabEl.addEventListener('dragover', (event) => {
-        if (!draggedTabId || draggedTabId === tab.id) {
-          return
-        }
-
-        event.preventDefault()
-        event.stopPropagation()
-        if (event.dataTransfer) {
-          event.dataTransfer.dropEffect = 'move'
-        }
-
-        const bounds = tabEl.getBoundingClientRect()
-        const dropBefore = event.clientX < bounds.left + bounds.width / 2
-        tabEl.classList.toggle('drag-over-before', dropBefore)
-        tabEl.classList.toggle('drag-over-after', !dropBefore)
-      })
-
+      // Drag leave
       tabEl.addEventListener('dragleave', () => {
-        tabEl.classList.remove('drag-over-before', 'drag-over-after')
+        delete (tabEl as any).dataset.dropPosition
       })
 
-      tabEl.addEventListener('drop', (event) => {
-        if (!draggedTabId || draggedTabId === tab.id) {
-          return
-        }
-
-        event.preventDefault()
-        event.stopPropagation()
-        const bounds = tabEl.getBoundingClientRect()
-        const dropBefore = event.clientX < bounds.left + bounds.width / 2
-        tabEl.classList.remove('drag-over-before', 'drag-over-after')
-        reorderTabs(draggedTabId, tab.id, dropBefore)
+      // Drop on tab
+      tabEl.addEventListener('drop', (e) => {
+        if (!draggedTabId || draggedTabId === tab.id) return
+        e.preventDefault()
+        const dropPos = (tabEl as any).dataset.dropPosition
+        reorderTabs(draggedTabId, tab.id, dropPos === 'before')
         draggedTabId = null
+      })
+
+      // Drag end cleanup
+      tabEl.addEventListener('dragend', () => {
+        draggedTabId = null
+        const allTabs = tabsContainerEl.querySelectorAll('.tab')
+        allTabs.forEach(t => delete (t as any).dataset.dropPosition)
       })
 
       tabsContainerEl.appendChild(tabEl)
     }
+
+    // Initialize Lucide icons for tabs
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons({ nameAttr: 'data-lucide' })
+    }
+
+    // Update scroll indicators after rendering tabs
+    setTimeout(() => updateScrollIndicators(), 50)
   }
 
   function clearObjectURLs() {
@@ -413,7 +472,7 @@ function initializeApp() {
 
     switch (platform) {
       case 'mindmap':
-        title = '🧠 Mind Map Options'
+        title = 'Mind Map Options'
         content = `
           <div style="display: flex; flex-direction: column; gap: 12px;">
             <p style="color: #e0e0e0;">Create a mind map from your documents:</p>
@@ -427,7 +486,7 @@ function initializeApp() {
         `
         break
       case 'podcast':
-        title = '🎙️ Podcast Options'
+        title = 'Podcast Options'
         content = `
           <div style="display: flex; flex-direction: column; gap: 12px;">
             <p style="color: #e0e0e0;">Generate or play podcasts:</p>
@@ -465,7 +524,10 @@ function initializeApp() {
 
   // Open PDF viewer in popup with text selection support
   function openPDFViewer(entry: FileEntry) {
-    popupTitle!.textContent = `📄 ${entry.name}`
+    popupTitle!.innerHTML = `<i data-lucide="file-text" style="width: 18px; height: 18px; display: inline-block; vertical-align: middle; margin-right: 6px;"></i>${entry.name}`
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons({ nameAttr: 'data-lucide' })
+    }
     
     // Create container for PDF viewer
     popupBody!.innerHTML = `
@@ -543,8 +605,12 @@ function initializeApp() {
         align-items: center;
       `
       header.innerHTML = `
-        <span style="color: #ff8c00; font-weight: 600;">📝 Selection Analysis</span>
-        <button id="closeSelectionPopup" style="background: none; border: none; color: #888; cursor: pointer; font-size: 18px;">×</button>
+        <span style="color: #ff8c00; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+          <i data-lucide="file-text" style="width: 16px; height: 16px;"></i> Selection Analysis
+        </span>
+        <button id="closeSelectionPopup" style="background: none; border: none; color: #888; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 4px;">
+          <i data-lucide="x" style="width: 16px; height: 16px;"></i>
+        </button>
       `
       
       // Body
@@ -562,6 +628,10 @@ function initializeApp() {
       popup.appendChild(header)
       popup.appendChild(body)
       document.body.appendChild(popup)
+
+      if (typeof lucide !== 'undefined') {
+        lucide.createIcons({ root: popup, nameAttr: 'data-lucide' })
+      }
       
       // Close handler
       const closeBtn = popup.querySelector('#closeSelectionPopup')
@@ -634,6 +704,36 @@ function initializeApp() {
   // Simple markdown to HTML converter
   function parseMarkdown(text: string): string {
     let html = text
+    const preservedElements: string[] = []
+
+    // Handle Audio Player Placeholder
+    html = html.replace(/\[\[AUDIO_PLAYER:([^\]|]+)(?:\|([^\]]*))?\]\]/g, (match, url, script) => {
+      console.log('Found audio player tag:', url, 'with script:', script)
+      const playerHtml = `<div class="audio-player-container" style="display: block; margin: 16px 0; padding: 16px; background: #1a1a1a; border-radius: 8px; border: 1px solid #ff8c00;"${script ? ` data-script="${script.replace(/&/g, '&amp;').replace(/"/g, '&quot;')}"` : ''}>
+        <div style="font-size: 14px; color: #ff8c00; margin-bottom: 12px; font-weight: 600; display: flex; align-items: center; justify-content: space-between;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <i data-lucide="headphones" style="width: 16px; height: 16px;"></i> Audio Player
+          </div>
+          <button class="transcript-btn" style="background: transparent; border: none; color: #ff8c00; cursor: pointer; display: flex; align-items: center; gap: 4px; font-size: 12px; padding: 4px 8px; border-radius: 4px; transition: all 0.2s ease;" title="View Transcript">
+            <i data-lucide="file-text" style="width: 14px; height: 14px;"></i> Transcript
+          </button>
+        </div>
+        <div class="spectrum-display" style="width: 100%; height: 100px; background: #0d0d0d; border-radius: 6px; display: flex; align-items: center; position: relative; margin-bottom: 12px;">
+          <button class="play-pause-btn" style="position: absolute; left: 20px; z-index: 10; background: rgba(255, 140, 0, 0.9); border: none; border-radius: 50%; width: 60px; height: 60px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s ease; color: white; font-size: 24px;">
+            <i data-lucide="play" style="width: 24px; height: 24px;"></i>
+          </button>
+          <canvas class="audio-spectrum" width="400" height="80" style="flex: 1;background: transparent;padding-right: 10px;"></canvas>
+        </div>
+        <div class="progress-container" style="width: 100%; height: 6px; background: #333; border-radius: 3px; cursor: pointer; position: relative;">
+          <div class="progress-bar" style="height: 100%; background: #ff8c00; border-radius: 3px; width: 0%; transition: width 0.1s ease;"></div>
+        </div>
+        <audio preload="metadata" style="display: none;">
+          <source src="${url}" type="audio/mpeg">
+        </audio>
+      </div>`
+      preservedElements.push(playerHtml)
+      return `HTMLPLACEHOLDER${preservedElements.length - 1}`
+    })
     
     // Headers (## heading)
     html = html.replace(/^### (.+)$/gm, '<h3 style="color: #ff8c00; margin: 12px 0 8px 0; font-size: 16px;">$1</h3>')
@@ -671,7 +771,256 @@ function initializeApp() {
     // Wrap in paragraph
     html = '<p style="margin: 8px 0;">' + html + '</p>'
     
+    // Restore preserved HTML elements
+    preservedElements.forEach((element, index) => {
+      html = html.replace(`HTMLPLACEHOLDER${index}`, element)
+    })
+    
     return html
+  }
+
+  // Initialize audio spectrum analyzer for a given audio element
+  function initializeAudioSpectrum(audioElement: HTMLAudioElement) {
+    const container = audioElement.closest('.audio-player-container') as HTMLElement
+    if (!container) return
+
+    const canvas = container.querySelector('.audio-spectrum') as HTMLCanvasElement
+    const playPauseBtn = container.querySelector('.play-pause-btn') as HTMLButtonElement
+    const progressContainer = container.querySelector('.progress-container') as HTMLElement
+    const progressBar = container.querySelector('.progress-bar') as HTMLElement
+
+    if (!canvas || !playPauseBtn || !progressContainer || !progressBar) return
+
+    const canvasContext = canvas.getContext('2d')
+    if (!canvasContext) return
+
+    let audioContext: AudioContext | null = null
+    let analyser: AnalyserNode | null = null
+    let dataArray: Uint8Array
+    let animationId: number | null = null
+    let lastDataArray: Uint8Array | null = null
+
+    const startSpectrum = () => {
+      if (!audioContext) {
+        audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+        analyser = audioContext.createAnalyser()
+        analyser.fftSize = 256
+        const bufferLength = analyser.frequencyBinCount
+        dataArray = new Uint8Array(bufferLength)
+
+        const source = audioContext.createMediaElementSource(audioElement)
+        source.connect(analyser)
+        analyser.connect(audioContext.destination)
+      }
+
+      const draw = () => {
+        if (!analyser || !canvasContext) return
+
+        analyser.getByteFrequencyData(dataArray as any)
+        lastDataArray = new Uint8Array(dataArray) // Store last frame
+
+        canvasContext.clearRect(0, 0, canvas.width, canvas.height)
+
+        const barWidth = (canvas.width / dataArray.length) * 2.5
+        let barHeight
+        let x = 0
+
+        // Calculate fade distances (first and last 15% of bars fade in)
+        const fadeCount = Math.floor(dataArray.length * 0.15)
+
+        for (let i = 0; i < dataArray.length; i++) {
+          barHeight = (dataArray[i] / 255) * canvas.height
+
+          // Calculate opacity based on position (fade in from edges)
+          let opacity = 1.0
+          if (i < fadeCount) {
+            // Fade in from left edge
+            opacity = i / fadeCount
+          } else if (i >= dataArray.length - fadeCount) {
+            // Fade in from right edge
+            opacity = (dataArray.length - 1 - i) / fadeCount
+          }
+
+          canvasContext.fillStyle = `rgba(255, 140, 0, ${opacity})`
+          canvasContext.fillRect(x, canvas.height - barHeight, barWidth, barHeight)
+
+          x += barWidth + 1
+        }
+
+        animationId = requestAnimationFrame(draw)
+      }
+
+      draw()
+    }
+
+    const stopSpectrum = () => {
+      if (animationId) {
+        cancelAnimationFrame(animationId)
+        animationId = null
+      }
+      // Show the last frame dimmed when paused
+      if (canvasContext && lastDataArray) {
+        canvasContext.clearRect(0, 0, canvas.width, canvas.height)
+        
+        const barWidth = (canvas.width / lastDataArray.length) * 2.5
+        let barHeight
+        let x = 0
+
+        // Calculate fade distances (first and last 15% of bars fade in)
+        const fadeCount = Math.floor(lastDataArray.length * 0.15)
+        
+        for (let i = 0; i < lastDataArray.length; i++) {
+          barHeight = (lastDataArray[i] / 255) * canvas.height
+          
+          // Calculate opacity based on position (fade in from edges)
+          let opacity = 0.4 // Base dimmed opacity
+          if (i < fadeCount) {
+            // Fade in from left edge
+            opacity = 0.4 * (i / fadeCount)
+          } else if (i >= lastDataArray.length - fadeCount) {
+            // Fade in from right edge
+            opacity = 0.4 * ((lastDataArray.length - 1 - i) / fadeCount)
+          }
+
+          canvasContext.fillStyle = `rgba(255, 140, 0, ${opacity})`
+          canvasContext.fillRect(x, canvas.height - barHeight, barWidth, barHeight)
+          x += barWidth + 1
+        }
+      }
+    }
+
+    const updateProgress = () => {
+      const progress = (audioElement.currentTime / audioElement.duration) * 100
+      progressBar.style.width = `${progress}%`
+    }
+
+    const togglePlayPause = () => {
+      if (audioElement.paused) {
+        audioElement.play()
+        playPauseBtn.innerHTML = '<i data-lucide="pause" style="width: 24px; height: 24px;"></i>'
+        lucide.createIcons({ root: playPauseBtn })
+      } else {
+        audioElement.pause()
+        playPauseBtn.innerHTML = '<i data-lucide="play" style="width: 24px; height: 24px;"></i>'
+        lucide.createIcons({ root: playPauseBtn })
+      }
+    }
+
+    const seek = (event: MouseEvent) => {
+      const rect = progressContainer.getBoundingClientRect()
+      const clickX = event.clientX - rect.left
+      const percentage = clickX / rect.width
+      audioElement.currentTime = percentage * audioElement.duration
+    }
+
+    // Event listeners
+    playPauseBtn.addEventListener('click', togglePlayPause)
+    progressContainer.addEventListener('click', seek)
+    audioElement.addEventListener('play', startSpectrum)
+    audioElement.addEventListener('pause', stopSpectrum)
+    audioElement.addEventListener('ended', () => {
+      stopSpectrum()
+      playPauseBtn.innerHTML = '<i data-lucide="play" style="width: 24px; height: 24px;"></i>'
+      lucide.createIcons({ root: playPauseBtn })
+      progressBar.style.width = '0%'
+    })
+    audioElement.addEventListener('timeupdate', updateProgress)
+  }
+
+  // Show transcript popup
+  function showTranscriptPopup(script: string) {
+    const modal = document.createElement('div')
+    modal.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+      backdrop-filter: blur(4px);
+    `
+
+    const dialog = document.createElement('div')
+    dialog.style.cssText = `
+      background: #0d0d0d;
+      border: 2px solid #ff8c00;
+      border-radius: 12px;
+      padding: 24px;
+      max-width: 600px;
+      width: 90%;
+      max-height: 80vh;
+      overflow-y: auto;
+      box-shadow: 0 8px 32px rgba(255, 140, 0, 0.3);
+    `
+
+    const title = document.createElement('h3')
+    title.textContent = 'Podcast Script'
+    title.style.cssText = `
+      margin: 0 0 16px 0;
+      color: #ff8c00;
+      font-size: 18px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    `
+    title.innerHTML = '<i data-lucide="file-text" style="width: 20px; height: 20px;"></i> Podcast Script'
+
+    const content = document.createElement('div')
+    content.style.cssText = `
+      color: #e0e0e0;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      font-family: inherit;
+      font-size: 14px;
+    `
+    content.textContent = script
+
+    const closeBtn = document.createElement('button')
+    closeBtn.textContent = 'Close'
+    closeBtn.style.cssText = `
+      background: #2a2a2a;
+      border: 1px solid #666;
+      border-radius: 6px;
+      padding: 10px 20px;
+      color: #e0e0e0;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      margin-top: 16px;
+    `
+    closeBtn.addEventListener('click', () => {
+      modal.remove()
+    })
+
+    dialog.appendChild(title)
+    dialog.appendChild(content)
+    dialog.appendChild(closeBtn)
+    modal.appendChild(dialog)
+    document.body.appendChild(modal)
+
+    // Initialize icons
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons({ root: modal })
+    }
+
+    // Close on escape
+    modal.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        modal.remove()
+      }
+    })
+
+    // Close on background click
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        modal.remove()
+      }
+    })
   }
 
   // Add message to chat
@@ -713,12 +1062,7 @@ function initializeApp() {
     // Create copy button
     const copyBtn = document.createElement('button')
     copyBtn.className = 'message-copy-btn'
-    copyBtn.innerHTML = `
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
-        <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
-      </svg>
-    `
+    copyBtn.innerHTML = `<i data-lucide="copy" style="width: 16px; height: 16px;"></i>`
     copyBtn.title = 'Copy message'
     copyBtn.addEventListener('click', async (e) => {
       e.stopPropagation()
@@ -745,12 +1089,7 @@ function initializeApp() {
     if (isUser) {
       const editBtn = document.createElement('button')
       editBtn.className = 'message-edit-btn'
-      editBtn.innerHTML = `
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-        </svg>
-      `
+      editBtn.innerHTML = `<i data-lucide="edit-2" style="width: 16px; height: 16px;"></i>`
       editBtn.title = 'Edit and continue'
       editBtn.addEventListener('click', (e) => {
         e.stopPropagation()
@@ -765,6 +1104,24 @@ function initializeApp() {
 
     chatContainerEl.appendChild(messageWrapper)
     chatContainerEl.scrollTop = chatContainerEl.scrollHeight
+    
+    // Initialize audio spectrum for any new audio players in this message
+    const audioElements = messageWrapper.querySelectorAll('audio')
+    audioElements.forEach(audio => initializeAudioSpectrum(audio as HTMLAudioElement))
+    
+    // Add event listeners for transcript buttons
+    const transcriptBtns = messageWrapper.querySelectorAll('.transcript-btn')
+    transcriptBtns.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation()
+        const container = btn.closest('.audio-player-container') as HTMLElement
+        const script = container?.getAttribute('data-script') || 'Script content not available for this audio player.'
+        showTranscriptPopup(script)
+      })
+    })
+    
+    // Initialize icons
+    lucide.createIcons()
   }
 
   // Enter edit mode for a message
@@ -1033,135 +1390,161 @@ function initializeApp() {
 
   // Send chat message
   async function sendMessage() {
-    const message = chatInputEl.value.trim()
-    if (!message) return
+    const raw = chatInputEl.value.trim()
+    if (!raw) return
+    const message = raw
 
+    // Push user message
     addChatMessage(message, true)
     chatInputEl.value = ''
 
-    // Check if PDFs are uploaded and cached
+    // Preconditions
     if (files.length === 0) {
-      addChatMessage('Please upload some PDF files first to enable AI analysis.', false)
+      addChatMessage('📄 Please upload PDF files first.', false)
       return
     }
-
-    // Check if cache is ready
     if (!appState.cacheKey) {
-      addChatMessage('⏳ Please wait for documents to finish processing before querying...', false)
+      addChatMessage('⏳ Waiting for document processing to finish...', false)
+      return
+    }
+    if (appState.isProcessing) {
+      addChatMessage('⏳ Still working on previous request...', false)
       return
     }
 
-    // Check if processing
-    if (appState.isProcessing) {
-      addChatMessage('Please wait, I\'m processing your previous request...', false)
-      return
-    }
+    appState.isProcessing = true
+    const persona = appState.currentPersona
+    const task = message
 
     try {
-      appState.isProcessing = true
-     
-
-      // Extract persona and task from message, or use defaults
-      const persona = appState.currentPersona
-      const task = message
-
-      // Call Gemini analysis - use typing indicator for AI processing
       showTypingIndicator()
-      const analysisResponse = await analyzeChunksWithGemini(
-        appState.cacheKey,
-        persona,
-        task,
-        5, // k
-        5  // max_chunks_to_analyze
-      )
-
-      hideTypingIndicator()
-
-      // Format and display response as a single markdown message
-      if (analysisResponse.gemini_analysis && analysisResponse.gemini_analysis.length > 0) {
-        const geminiText = analysisResponse.gemini_analysis[0].gemini_analysis
+      if (currentPlatform === 'podcast') {
+        const podcastResp = await podcastFromPrompt(appState.projectName, message, 5, 'Podcast Host')
+        hideTypingIndicator()
         
-        // Display entire Gemini response as one message with markdown formatting
-        addChatMessage(geminiText, false)
+        // Build chat message with embedded audio player
+        const fullAudioUrl = podcastResp.audio_url ? `http://localhost:8080${podcastResp.audio_url}` : null
+        let podcastChatMessage = '<span style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;"><i data-lucide="mic" style="width: 20px; height: 20px; color: #ff8c00;"></i> <strong style="font-size: 1.1em;">Podcast Generated</strong></span>\n\n'
+        if (fullAudioUrl) {
+          podcastChatMessage += `[[AUDIO_PLAYER:${fullAudioUrl}|${podcastResp.script.replace(/\|/g, '\\|').replace(/\]/g, '\\]')}]]\n\n`
+        }
+        addChatMessage(podcastChatMessage, false)
+        podcastChatMessage += `<span style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;"><i data-lucide="file-text" style="width: 16px; height: 16px; color: #888;"></i> <strong>Script:</strong></span>`
+  
+        
+        const podcastList = document.getElementById('podcastList')
+        if (podcastList) {
+          podcastList.querySelectorAll('div').forEach(div => {
+            if (div.textContent?.includes('No podcasts')) div.remove()
+          })
+          const item = document.createElement('li')
+            item.style.cssText = 'padding:12px; border:1px solid #2a2a2a; border-radius:6px; margin-bottom:8px; background:#1a1a1a; display:flex; flex-direction:column; gap:8px;'
+            // Construct full audio URL for Electron environment
+            const fullAudioUrl = podcastResp.audio_url ? `http://localhost:8080${podcastResp.audio_url}` : null
+            item.innerHTML = `
+              <div style='display:flex; justify-content:space-between; align-items:center;'>
+                <strong style='color:#ff8c00;'>🎙️ ${podcastResp.insight_id.slice(0,8)}</strong>
+                <span style='font-size:11px; color:#666;'>${new Date().toLocaleTimeString()}</span>
+              </div>
+              ${fullAudioUrl ? `<div class="audio-player-container" style="display: block; margin: 8px 0; padding: 8px; background: #1a1a1a; border-radius: 6px; border: 1px solid #ff8c00;" data-script="${podcastResp.script.replace(/"/g, '&quot;')}">
+                <div style="font-size: 11px; color: #ff8c00; margin-bottom: 6px; font-weight: 600; display: flex; align-items: center; justify-content: space-between;">
+                  <div style="display: flex; align-items: center; gap: 4px;">
+                    <i data-lucide="headphones" style="width: 12px; height: 12px;"></i> Audio
+                  </div>
+                  <button class="transcript-btn" style="background: transparent; border: none; color: #ff8c00; cursor: pointer; display: flex; align-items: center; gap: 2px; font-size: 10px; padding: 2px 6px; border-radius: 3px; transition: all 0.2s ease;" title="View Transcript">
+                    <i data-lucide="file-text" style="width: 12px; height: 12px;"></i> Transcript
+                  </button>
+                </div>
+                <div class="spectrum-display" style="width: 98%;height: 60px;background: #0d0d0d;border-radius: 4px;display: flex;align-items: center;position: relative;margin-bottom: 6px;padding-right: 5px;">
+                  <button class="play-pause-btn" style="position: absolute; left: 10px; z-index: 10; background: rgba(255, 140, 0, 0.9); border: none; border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s ease; color: white; font-size: 12px;">
+                    <i data-lucide="play" style="width: 12px; height: 12px;"></i>
+                  </button>
+                  <canvas class="audio-spectrum" width="160" height="40" style="flex: 1; background: transparent; margin-left: 45px;"></canvas>
+                </div>
+                <div class="progress-container" style="width: 100%; height: 3px; background: #333; border-radius: 2px; cursor: pointer; position: relative;">
+                  <div class="progress-bar" style="height: 100%; background: #ff8c00; border-radius: 2px; width: 0%; transition: width 0.1s ease;"></div>
+                </div>
+                <audio preload="metadata" style="display: none;">
+                  <source src="${fullAudioUrl}" type="audio/mpeg">
+                </audio>
+              </div>` : `<div style='color:#888; font-size:12px;'>No audio generated (TTS unavailable)</div>`}
+            `          
+          podcastList.prepend(item)
+          
+          // Initialize audio spectrum and icons for the new item
+          const audioElements = item.querySelectorAll('audio')
+          audioElements.forEach(audio => initializeAudioSpectrum(audio as HTMLAudioElement))
+          if (typeof lucide !== 'undefined') {
+            lucide.createIcons({ root: item })
+          }
+          
+          // Add event listener for transcript button
+          const transcriptBtn = item.querySelector('.transcript-btn') as HTMLButtonElement
+          if (transcriptBtn) {
+            transcriptBtn.addEventListener('click', (e) => {
+              e.stopPropagation()
+              const script = item.querySelector('.audio-player-container')?.getAttribute('data-script') || 'Script not available'
+              showTranscriptPopup(script)
+            })
+          }
+        }
       } else {
-        addChatMessage('I analyzed your documents but couldn\'t generate insights. Please try rephrasing your question.', false)
+        const analysisResponse = await analyzeChunksWithGemini(appState.cacheKey, persona, task, 5, 5)
+        hideTypingIndicator()
+        if (analysisResponse.gemini_analysis && analysisResponse.gemini_analysis.length > 0) {
+          addChatMessage(analysisResponse.gemini_analysis[0].gemini_analysis, false)
+        } else {
+          addChatMessage('I analyzed your documents but could not produce insights. Try rephrasing.', false)
+        }
       }
-
-      // Show metadata
-     
-
     } catch (error) {
-      console.error('Error in sendMessage:', error)
-      hideLoadingOverlay()
       hideTypingIndicator()
-      addChatMessage(
-        `❌ Error: ${error instanceof Error ? error.message : 'Failed to analyze documents. Make sure the backend server is running on http://localhost:8080'}`,
-        false
-      )
+      console.error('sendMessage error:', error)
+      addChatMessage(`❌ Error: ${error instanceof Error ? error.message : 'Unknown failure'}`, false)
     } finally {
       appState.isProcessing = false
     }
   }
 
-  // Send an edited message (used when continuing from edited point)
-  async function sendEditedMessage(message: string) {
-    if (!message) return
-
-    // Check if PDFs are uploaded and cached
+  // Continue conversation after editing a previous user message
+  async function sendEditedMessage(editedText: string) {
+    if (!editedText) return
     if (files.length === 0) {
-      addChatMessage('Please upload some PDF files first to enable AI analysis.', false)
+      addChatMessage('📄 Please upload PDF files first.', false)
       return
     }
-
-    // Check if cache is ready
     if (!appState.cacheKey) {
-      addChatMessage('⏳ Please wait for documents to finish processing before querying...', false)
+      addChatMessage('⏳ Waiting for document processing to finish...', false)
       return
     }
-
-    // Check if processing
     if (appState.isProcessing) {
-      addChatMessage('Please wait, I\'m processing your previous request...', false)
+      addChatMessage('⏳ Still working on previous request...', false)
       return
     }
 
+    appState.isProcessing = true
+    const persona = appState.currentPersona
+    const task = editedText
     try {
-      appState.isProcessing = true
-
-      // Extract persona and task from message, or use defaults
-      const persona = appState.currentPersona
-      const task = message
-
-      // Call Gemini analysis - use typing indicator for AI processing
       showTypingIndicator()
-      const analysisResponse = await analyzeChunksWithGemini(
-        appState.cacheKey,
-        persona,
-        task,
-        5, // k
-        5  // max_chunks_to_analyze
-      )
-
-      hideTypingIndicator()
-
-      // Format and display response as a single markdown message
-      if (analysisResponse.gemini_analysis && analysisResponse.gemini_analysis.length > 0) {
-        const geminiText = analysisResponse.gemini_analysis[0].gemini_analysis
-        
-        // Display entire Gemini response as one message with markdown formatting
-        addChatMessage(geminiText, false)
+      if (currentPlatform === 'podcast') {
+        addChatMessage('🎙️ Regenerating podcast with edited prompt...', false)
+        const podcastResp = await podcastFromPrompt(appState.projectName, editedText, 5, 'Podcast Host')
+        hideTypingIndicator()
+        addChatMessage(`**Podcast Script (Edited)**\n${podcastResp.script}`, false)
       } else {
-        addChatMessage('I analyzed your documents but couldn\'t generate insights. Please try rephrasing your question.', false)
+        const analysisResponse = await analyzeChunksWithGemini(appState.cacheKey, persona, task, 5, 5)
+        hideTypingIndicator()
+        if (analysisResponse.gemini_analysis && analysisResponse.gemini_analysis.length > 0) {
+          addChatMessage(analysisResponse.gemini_analysis[0].gemini_analysis, false)
+        } else {
+          addChatMessage('I analyzed your documents but could not produce insights. Try rephrasing.', false)
+        }
       }
-
     } catch (error) {
-      console.error('Error in sendEditedMessage:', error)
-      hideLoadingOverlay()
       hideTypingIndicator()
-      addChatMessage(
-        `❌ Error: ${error instanceof Error ? error.message : 'Failed to analyze documents. Make sure the backend server is running on http://localhost:8080'}`,
-        false
-      )
+      console.error('sendEditedMessage error:', error)
+      addChatMessage(`❌ Error: ${error instanceof Error ? error.message : 'Unknown failure'}`, false)
     } finally {
       appState.isProcessing = false
     }
@@ -1185,7 +1568,10 @@ function initializeApp() {
       // Create thumbnail container
       const thumbnailDiv = document.createElement('div')
       thumbnailDiv.className = 'file-thumbnail'
-      thumbnailDiv.innerHTML = '<div style="font-size: 48px;">📄</div>' // Placeholder icon
+      thumbnailDiv.innerHTML = '<i data-lucide="file-text" style="width: 48px; height: 48px; color: #ff8c00;"></i>'
+      if (typeof lucide !== 'undefined') {
+        lucide.createIcons({ nameAttr: 'data-lucide' })
+      }
       
       // Add numbering
       const numberSpan = document.createElement('span')
@@ -1285,8 +1671,8 @@ function initializeApp() {
     })
   }
 
-  fileInput.addEventListener('change', async () => {
-    const selected = fileInput.files
+  fileInput!.addEventListener('change', async () => {
+    const selected = fileInput!.files
     if (!selected || selected.length === 0) return
 
     // Add new files to existing list instead of replacing
@@ -1337,7 +1723,7 @@ function initializeApp() {
     }
     
     // Reset the file input so the same file can be added again if needed
-    fileInput.value = ''
+    fileInput!.value = ''
   })
 
   // Initialize tab system
@@ -1354,12 +1740,12 @@ function initializeApp() {
 
   newMindmapBtn!.addEventListener('click', () => {
     const tabId = createNewTab('mindmap')
-    addChatMessage('🧠 Mind Map Mode - Describe the concepts you want to map, and I\'ll create a visual mind map from your documents.', false)
+    addChatMessage('Mind Map Mode - Describe the concepts you want to map, and I\'ll create a visual mind map from your documents.', false)
   })
 
   newPodcastBtn!.addEventListener('click', () => {
     const tabId = createNewTab('podcast')
-    addChatMessage('🎙️ Podcast Mode - I can create or discuss podcast content based on your documents. What would you like to explore?', false)
+    addChatMessage('Podcast Mode - I can create or discuss podcast content based on your documents. What would you like to explore?', false)
   })
 
   // Chat input enter key

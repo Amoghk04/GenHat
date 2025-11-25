@@ -93,6 +93,45 @@ export interface AnalyzeChunksResponse {
   insight_id: string
 }
 
+export interface PodcastFromPromptResponse {
+  insight_id: string
+  script: string
+  analysis: string
+  audio_url: string | null
+  retrieved_chunk_count: number
+  project_name: string
+  persona: string
+  prompt: string
+  domain: string
+}
+
+/**
+ * Generate podcast from prompt (retrieval + analysis + script + TTS)
+ */
+export async function podcastFromPrompt(
+  projectName: string,
+  prompt: string,
+  k: number = 5,
+  persona: string = 'Podcast Host'
+): Promise<PodcastFromPromptResponse> {
+  const payload = {
+    project_name: projectName,
+    prompt,
+    k,
+    persona
+  }
+  const response = await fetch(`${BACKEND_URL}/podcast-from-prompt`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+  if (!response.ok) {
+    const err = await response.text()
+    throw new Error(`Failed to generate podcast: ${err}`)
+  }
+  return response.json()
+}
+
 /**
  * Upload PDFs to backend and get a cache key
  */

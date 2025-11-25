@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; connect-src 'self' http://localhost:8080 https://generativelanguage.googleapis.com; img-src 'self' data: blob:; font-src 'self' data:;" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://unpkg.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; connect-src 'self' http://localhost:8080 https://generativelanguage.googleapis.com https://unpkg.com; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' http://localhost:8080 blob:; frame-src 'self' blob:;" />
     
     <!-- PDF.js library -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf_viewer.min.css">
@@ -15,6 +15,9 @@
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
       }
     </script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
     
     <style>
       body { 
@@ -53,21 +56,15 @@
         overflow-y: hidden;
         align-items: flex-end;
         height: 44px;
-        scrollbar-width: thin;
-        scrollbar-color: #3a3a3a #1a1a1a;
+        scrollbar-width: none;
+        flex-wrap: nowrap;
+        width: 100%;
+        box-sizing: border-box;
+        -ms-overflow-style: none;
       }
 
       .tabs-container::-webkit-scrollbar {
-        height: 6px;
-      }
-
-      .tabs-container::-webkit-scrollbar-track {
-        background: #1a1a1a;
-      }
-
-      .tabs-container::-webkit-scrollbar-thumb {
-        background: #3a3a3a;
-        border-radius: 3px;
+        display: none;
       }
 
       .tab {
@@ -77,7 +74,7 @@
         background: #2a2a2a;
         border: 1px solid #3a3a3a;
         border-bottom: 1px solid #2a2a2a;
-        border-radius: 24px 24px 0 0;
+        border-radius: 8px 8px 0 0;
         padding: 8px 16px;
         cursor: pointer;
         transition: all 0.15s ease;
@@ -88,6 +85,7 @@
         min-width: 100px;
         max-width: 220px;
         position: relative;
+        flex-shrink: 0;
       }
 
       .tab:hover {
@@ -181,6 +179,50 @@
       .add-tab-btn:hover {
         color: #ff8c00;
         background: rgba(255, 140, 0, 0.1);
+      }
+
+      /* Tabs wrapper with scroll indicators */
+      .tabs-wrapper {
+        position: relative;
+        display: flex;
+        align-items: flex-end;
+      }
+
+      .scroll-indicator {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 40px;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(90deg, #1a1a1a 0%, transparent 100%);
+        z-index: 100;
+        pointer-events: auto;
+        color: #ff8c00;
+        font-size: 20px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+
+      .scroll-indicator:hover {
+        color: #ff6b00;
+        font-size: 24px;
+      }
+
+      .scroll-indicator.left {
+        left: 0;
+        background: linear-gradient(90deg, #1a1a1a 0%, transparent 100%);
+      }
+
+      .scroll-indicator.right {
+        right: 0;
+        background: linear-gradient(270deg, #1a1a1a 0%, transparent 100%);
+      }
+
+      .scroll-indicator.visible {
+        display: flex;
       }
 
       /* File card styles */
@@ -867,21 +909,41 @@
         color: #f44336;
       }
 
-      /* PDF Text Layer Styles - Critical for correct alignment */
-      .textLayer {
-        opacity: 1 !important;
-        line-height: 1.0;
+      /* Custom Audio Player Styles */
+      .spectrum-display {
+        position: relative;
       }
 
-      .textLayer span, .textLayer br {
-        color: transparent;
-        cursor: text;
+      .play-pause-btn {
+        opacity: 0.8;
+        transform: scale(1);
       }
 
-      .textLayer ::selection {
-        background: rgba(0, 0, 255, 0.3);
-        color: transparent;
+      .play-pause-btn:hover {
+        opacity: 1;
+        transform: scale(1.1);
+        box-shadow: 0 4px 12px rgba(255, 140, 0, 0.4);
       }
+
+      .play-pause-btn:active {
+        transform: scale(0.95);
+      }
+
+      .progress-container {
+        background: #333;
+        border-radius: 3px;
+        overflow: hidden;
+      }
+
+      .progress-container:hover .progress-bar {
+        background: #ffa500;
+      }
+
+      .progress-bar {
+        background: #ff8c00;
+        transition: width 0.1s ease;
+      }
+    </style>
     </style>
   </head>
   <body>
@@ -889,34 +951,13 @@
       <!-- Left Sidebar: Action Buttons -->
       <div style="width: 60px; display: flex; flex-direction: column; gap: 12px; justify-content: flex-start;">
         <button id="newChatBtn" style="width: 100%; height: 60px; background: linear-gradient(135deg, #ff8c00 0%, #ff6b00 100%); border: none; border-radius: 8px; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease; box-shadow: 0 2px 8px rgba(255, 140, 0, 0.3);" title="New Chat">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-          </svg>
+          <i data-lucide="message-square" style="width: 28px; height: 28px;"></i>
         </button>
         <button id="newMindmapBtn" style="width: 100%; height: 60px; background: linear-gradient(135deg, #ff8c00 0%, #ff6b00 100%); border: none; border-radius: 8px; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease; box-shadow: 0 2px 8px rgba(255, 140, 0, 0.3);" title="New Mind Map">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="1"></circle>
-            <circle cx="19" cy="12" r="1"></circle>
-            <circle cx="5" cy="12" r="1"></circle>
-            <circle cx="12" cy="5" r="1"></circle>
-            <circle cx="12" cy="19" r="1"></circle>
-            <circle cx="17.66" cy="17.66" r="1"></circle>
-            <circle cx="6.34" cy="6.34" r="1"></circle>
-            <line x1="12" y1="12" x2="19" y2="12"></line>
-            <line x1="12" y1="12" x2="5" y2="12"></line>
-            <line x1="12" y1="12" x2="12" y2="5"></line>
-            <line x1="12" y1="12" x2="12" y2="19"></line>
-            <line x1="12" y1="12" x2="17.66" y2="17.66"></line>
-            <line x1="12" y1="12" x2="6.34" y2="6.34"></line>
-          </svg>
+          <i data-lucide="network" style="width: 28px; height: 28px;"></i>
         </button>
         <button id="newPodcastBtn" style="width: 100%; height: 60px; background: linear-gradient(135deg, #ff8c00 0%, #ff6b00 100%); border: none; border-radius: 8px; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease; box-shadow: 0 2px 8px rgba(255, 140, 0, 0.3);" title="New Podcast">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
-            <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-            <line x1="12" y1="19" x2="12" y2="23"></line>
-            <line x1="8" y1="23" x2="16" y2="23"></line>
-          </svg>
+          <i data-lucide="mic" style="width: 28px; height: 28px;"></i>
         </button>
       </div>
 
@@ -929,14 +970,14 @@
         
         <!-- Tabs for Files, Mindmap, Podcast -->
         <div style="display: flex; gap: 2px; margin-bottom: 12px; border-bottom: 1px solid #2a2a2a; overflow-x: auto;">
-          <button class="sidebar-tab active" data-tab="files">📄 Files</button>
-          <button class="sidebar-tab" data-tab="mindmap">🧠 Mindmap</button>
-          <button class="sidebar-tab" data-tab="podcast">🎙️ Podcast</button>
+          <button class="sidebar-tab active" data-tab="files"><i data-lucide="file-text" style="width: 14px; height: 14px; margin-right: 4px;"></i>Files</button>
+          <button class="sidebar-tab" data-tab="mindmap"><i data-lucide="brain" style="width: 14px; height: 14px; margin-right: 4px;"></i>Mindmap</button>
+          <button class="sidebar-tab" data-tab="podcast"><i data-lucide="podcast" style="width: 14px; height: 14px; margin-right: 4px;"></i>Podcast</button>
         </div>
         
         <!-- Files Tab Content -->
         <div class="sidebar-tab-content active" data-tab="files" style="flex-direction: column; flex: 1; min-height: 0; overflow: hidden;">
-          <label for="fileInput" style="cursor: pointer; width: 93%; padding: 10px; background: #ff8c00; color: white; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; transition: all 0.2s ease; border: none; margin-bottom: 8px; flex-shrink: 0;" title="Upload PDFs">📤 Upload PDF</label>
+          <label for="fileInput" style="cursor: pointer; width: 93%; padding: 10px; background: #ff8c00; color: white; border-radius: 6px; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 14px; font-weight: 600; transition: all 0.2s ease; border: none; margin-bottom: 8px; flex-shrink: 0;" title="Upload PDFs"><i data-lucide="upload" style="width: 16px; height: 16px;"></i>Upload PDF</label>
           <input id="fileInput" type="file" accept="application/pdf" multiple style="display: none;" />
           <ul id="fileList" style="list-style: none; padding: 4px; margin: 0; flex: 1; overflow-y: auto; border: 1px solid #2a2a2a; border-radius: 6px; background: #1a1a1a; min-height: 0;"></ul>
         </div>
@@ -957,9 +998,13 @@
       </div>
 
       <!-- Right Section: Chat Window with Tabs -->
-      <div style="flex: 1; display: flex; flex-direction: column; gap: 0;">
+      <div style="flex: 1; display: flex; flex-direction: column; gap: 0; min-width: 0; overflow: hidden;">
         <!-- Tab Bar -->
-        <div class="tabs-container" id="tabsContainer"></div>
+        <div class="tabs-wrapper">
+          <div class="scroll-indicator left" id="scrollLeftIndicator">‹</div>
+          <div class="tabs-container" id="tabsContainer"></div>
+          <div class="scroll-indicator right" id="scrollRightIndicator">›</div>
+        </div>
 
         <!-- Chat Messages Area -->
         <div id="chatContainer" style="flex: 1; background: #0d0d0d; border: 1px solid #2a2a2a; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; max-height: calc(100vh - 160px);"></div>
@@ -974,9 +1019,9 @@
           />
           <button 
             id="sendButton" 
-            style="background: linear-gradient(135deg, #ff8c00 0%, #ff6b00 100%); border: none; border-radius: 6px; padding: 12px 24px; color: white; font-weight: 600; cursor: pointer; transition: all 0.2s ease;"
+            style="background: linear-gradient(135deg, #ff8c00 0%, #ff6b00 100%); border: none; border-radius: 6px; padding: 12px 20px; color: white; font-weight: 600; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center;"
           >
-            Send
+            <i data-lucide="send" style="width: 20px; height: 20px;"></i>
           </button>
         </div>
       </div>
@@ -1009,7 +1054,7 @@
       // Error handler for module loading
       window.addEventListener('error', (e) => {
         console.error('Global error:', e.message, e.filename, e.lineno, e.colno);
-        if (e.message.includes('Failed to fetch') || e.message.includes('module')) {
+        if (e.message && (e.message.includes('Failed to fetch') || e.message.includes('module'))) {
           document.body.innerHTML += `
             <div style="position: fixed; top: 0; left: 0; right: 0; background: #f44336; color: white; padding: 16px; z-index: 10000;">
               <strong>Module Loading Error:</strong> ${e.message}<br>
@@ -1018,6 +1063,11 @@
           `;
         }
       }, true);
+      
+      // Initialize Lucide icons
+      if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+      }
       
       // Import and run main renderer
       import('./dist/renderer.js').catch(err => {

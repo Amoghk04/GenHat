@@ -1458,13 +1458,236 @@ Title: <compelling title>
         "regenerated": req.regenerate,
         "host_name": HOST_A
     }
+
+# --- Unified podcast creation from prompt (retrieval + analysis + script + TTS) ---
+class PodcastFromPromptRequest(BaseModel):
+    project_name: str
+    prompt: str
+    k: int = 5
+    gemini_model: Optional[str] = GEMINI_DEFAULT_MODEL
+    voice: Optional[str] = "en-US-AvaMultilingualNeural"
+    audio_format: Optional[str] = "mp3"
+    persona: Optional[str] = "Podcast Host"
+    analysis_style: Optional[str] = "Provide: (1) Key Insights, (2) Actionable Recommendations, (3) Interesting Facts, (4) Potential Contradictions with sources, (5) Cross-connections."
+    regenerate: Optional[bool] = False
+
+@app.post("/podcast-from-prompt")
+async def podcast_from_prompt(req: PodcastFromPromptRequest):
+    """End-to-end podcast generation from a single prompt.
+
+    Steps:
+        1. Load project chunks + (optional) persisted embeddings.
+        2. Perform hybrid retrieval for prompt.
+        3. Aggregate top-k sections into one Gemini analysis call.
+        4. Generate podcast script (second Gemini call) using analysis + retrieval.
+        5. Synthesize audio via Azure TTS (best-effort).
+        6. Persist insight (analysis + script + audio) under new insight_id.
+    """
+    try:
+        safe_project = _safe_project_name(req.project_name)
+        meta = load_project_meta(safe_project)
+        if not meta:
+            raise HTTPException(status_code=404, detail="Project not found")
+        chunks = load_project_chunks(safe_project)
+        if not chunks:
+            raise HTTPException(status_code=400, detail="Project has no chunks. Upload PDFs first.")
+
+        # Attempt to load persisted embeddings for faster retriever build
+        loaded = load_embeddings(BASE_DATA_DIR, safe_project)
+        pre_embs = None
+        emb_model_name = "all-MiniLM-L12-v2"
+        if loaded:
+            loaded_ids, emb_array, model_name = loaded
+            id_map = {c.get('chunk_id'): c for c in chunks if c.get('chunk_id')}
+            ordered_chunks = [id_map[cid] for cid in loaded_ids if cid in id_map]
+            if len(ordered_chunks) == emb_array.shape[0]:
+                chunks = ordered_chunks
+                pre_embs = emb_array
+                emb_model_name = model_name
+                print(f"🔄 Reused persisted embeddings for podcast flow ({emb_array.shape[0]} vectors)")
+            else:
+                print("⚠️ Embedding mismatch; falling back to recompute.")
+
+        detected_domain = meta.get("domain", "general")
+        retriever = build_hybrid_index(chunks, domain=detected_domain, embedding_model=emb_model_name, precomputed_embeddings=pre_embs)
+
+        # Retrieval
+        query = f"{req.persona} {req.prompt}".strip()
+        try:
+            top_chunks = search_top_k_hybrid(retriever, query, persona=req.persona, task=req.prompt, k=req.k)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Retrieval failed: {e}")
+        if not top_chunks:
+            raise HTTPException(status_code=400, detail="No relevant sections retrieved")
+
+        use_n = min(req.k, len(top_chunks))
+        combined = top_chunks[:use_n]
+
+        sections_blob_parts = []
+        for idx, ch in enumerate(combined, start=1):
+            sections_blob_parts.append(
+                f"Section {idx}:\nDocument: {ch.get('pdf_name','Unknown')}\nHeading: {ch.get('heading', NO_HEADING)}\nPage: {ch.get('page_number',1)}\nContent:\n{ch.get('content', ch.get('text',''))}\n---"
+            )
+        sections_blob = "\n".join(sections_blob_parts)
+
+        analysis_prompt = f"""
+You are a domain expert analyst.
+Persona: {req.persona}
+User Prompt: {req.prompt}
+Domain: {detected_domain}
+{req.analysis_style}
+Strict: Ground ALL outputs ONLY in provided sections; cite Section number + (document p.page) when referencing.
+
+SECTIONS START
+{sections_blob}
+SECTIONS END
+"""
+
+        # Cache context for analysis
+        chunk_hashes = [ch.get('chunk_hash') or hash_bytes(ch.get('content', ch.get('text','')).encode('utf-8')) for ch in combined]
+        analysis_cache_key = f"ANALYSIS:{req.prompt}"  # semantic intent key
+        analysis_cache_context = {
+            "type": "podcast_analysis",
+            "project": safe_project,
+            "model": req.gemini_model,
+            "chunk_hashes": chunk_hashes
+        }
+        cached_analysis = await asyncio.to_thread(prompt_cache.get, analysis_cache_key, analysis_cache_context)
+        if cached_analysis and not req.regenerate:
+            analysis_text = cached_analysis['response']
+        else:
+            analysis_text = await call_gemini_api(analysis_prompt, os.getenv("VITE_GEMINI_API_KEY"), model=req.gemini_model or GEMINI_DEFAULT_MODEL)
+            if not analysis_text.startswith("[Gemini"):
+                await asyncio.to_thread(prompt_cache.set, analysis_cache_key, analysis_text, analysis_cache_context, {"chunk_count": use_n})
+
+        # Script generation prompt (use analysis)
+        script_prompt = f"""
+You are writing a concise podcast monologue.
+Persona/Host: {req.persona}
+Prompt: {req.prompt}
+Domain: {detected_domain}
+
+Analysis Summary (verbatim):\n{analysis_text[:6000]}\n---
+Task: Create a script with:
+1) A compelling title
+2) Engaging hook (1–2 lines)
+3) Narrative grouping key insights referencing Section numbers casually
+4) Actionable wrap-up
+Avoid hallucinations. Only use provided analysis.
+Output format:
+Title: <title>
+<paragraphs>
+"""
+
+        script_cache_key = f"SCRIPT:{req.prompt}"  # semantic intent key for script
+        script_cache_context = {
+            "type": "podcast_script",
+            "project": safe_project,
+            "model": req.gemini_model,
+            "analysis_hash": hash_bytes(analysis_text.encode('utf-8'))
+        }
+        cached_script = await asyncio.to_thread(prompt_cache.get, script_cache_key, script_cache_context)
+        if cached_script and not req.regenerate:
+            script_text = cached_script['response']
+        else:
+            script_text = await call_gemini_api(script_prompt, os.getenv("VITE_GEMINI_API_KEY"), model=req.gemini_model or GEMINI_DEFAULT_MODEL)
+            if not script_text.startswith("[Gemini"):
+                await asyncio.to_thread(prompt_cache.set, script_cache_key, script_text, script_cache_context)
+
+        # Persist insight directory
+        insight_id = uuid.uuid4().hex
+        insight_dir = _insight_dir(safe_project, insight_id)
+        insight_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            import aiofiles
+            async with aiofiles.open(insight_dir/"analysis.json", "w", encoding="utf-8") as f:
+                await f.write(json.dumps({
+                    "metadata": {
+                        "input_documents": [f.get("name") for f in meta.get("files", [])],
+                        "persona": req.persona,
+                        "job_to_be_done": req.prompt,
+                        "domain": detected_domain,
+                        "gemini_model": req.gemini_model,
+                        "project_name": safe_project,
+                        "chunks_analyzed": use_n
+                    },
+                    "retrieval_results": [
+                        {
+                            "document": ch.get('pdf_name','Unknown'),
+                            "section_title": ch.get('heading', NO_HEADING),
+                            "content": ch.get('content', ch.get('text', NO_CONTENT)),
+                            "page_number": ch.get('page_number',1),
+                            "hybrid_score": ch.get('hybrid_score',0),
+                            "bm25_score": ch.get('bm25_score',0),
+                            "embedding_score": ch.get('embedding_score',0),
+                            "chunk_id": ch.get('chunk_id'),
+                            "chunk_hash": ch.get('chunk_hash')
+                        } for ch in combined
+                    ],
+                    "analysis_text": analysis_text,
+                    "script": script_text,
+                    "insight_id": insight_id
+                }, indent=2))
+            (insight_dir/"script.txt").write_text(script_text, encoding='utf-8')
+        except Exception as persist_err:
+            print(f"⚠️ Failed to persist podcast insight {insight_id}: {persist_err}")
+
+        # TTS synthesis best-effort
+        audio_url = None
+        try:
+            import azure.cognitiveservices.speech as speechsdk  # type: ignore
+            speech_key = os.getenv("SPEECH_API_KEY")
+            speech_region = os.getenv("SPEECH_REGION")
+            if speech_key and speech_region and not script_text.startswith('[Gemini'):
+                speech_config = speechsdk.SpeechConfig(subscription=speech_key, region=speech_region)
+                speech_config.set_speech_synthesis_output_format(
+                    speechsdk.SpeechSynthesisOutputFormat.Audio48Khz192KBitRateMonoMp3
+                )
+                ssml = _build_ssml(script_text[:10000], req.voice or "en-US-AvaMultilingualNeural", 1.0, "0%", "en-US")
+                synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=None)
+                loop = asyncio.get_event_loop()
+                result = await loop.run_in_executor(None, lambda: synthesizer.speak_ssml_async(ssml).get())
+                if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
+                    audio_bytes = bytes(result.audio_data or b"")
+                    (insight_dir/"podcast.mp3").write_bytes(audio_bytes)
+                    audio_url = f"/insight-audio/{safe_project}/{insight_id}.mp3"
+                else:
+                    print("⚠️ TTS did not complete for podcast flow")
+            else:
+                print("ℹ️ Skipping TTS (missing credentials or script invalid).")
+        except Exception as tts_err:
+            print(f"⚠️ TTS failed for podcast flow: {tts_err}")
+
+        return {
+            "insight_id": insight_id,
+            "script": script_text,
+            "analysis": analysis_text[:1500],  # trimmed preview
+            "audio_url": audio_url,
+            "retrieved_chunk_count": use_n,
+            "project_name": safe_project,
+            "persona": req.persona,
+            "prompt": req.prompt,
+            "domain": detected_domain
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Podcast generation error: {e}")
 @app.get("/insight-audio/{project_name}/{insight_id}.mp3")
 async def get_insight_audio(project_name: str, insight_id: str):
     project = _safe_project_name(project_name)
     audio_path = _insight_dir(project, insight_id)/"podcast.mp3"
     if not audio_path.exists():
         raise HTTPException(status_code=404, detail="Audio not found")
-    return FileResponse(audio_path, media_type="audio/mpeg")
+    # Enable range requests for proper audio playback in browsers
+    return FileResponse(
+        audio_path,
+        media_type="audio/mpeg",
+        headers={
+            "Accept-Ranges": "bytes",
+            "Cache-Control": "no-cache"
+        }
+    )
 
 @app.get("/projects/{project_name}/insights")
 async def list_project_insights(project_name: str):
