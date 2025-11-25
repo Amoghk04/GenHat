@@ -952,10 +952,264 @@
       .hide-scrollbar::-webkit-scrollbar {
         display: none;
       }
-    </style>
+
+      /* Landing Page Styles */
+      #landing-page {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: #1a1a1a;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        opacity: 1;
+        transition: opacity 0.5s ease-in-out;
+      }
+
+      #landing-page.hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .landing-logo {
+        width: 300px;
+        margin-bottom: 60px;
+        animation: float 6s ease-in-out infinite;
+        filter: drop-shadow(0 0 20px rgba(255, 140, 0, 0.3));
+      }
+
+      .landing-options {
+        display: flex;
+        gap: 40px;
+        animation: slideUp 0.8s ease-out 0.2s backwards;
+      }
+
+      .landing-btn {
+        width: 200px;
+        height: 160px;
+        border-radius: 16px;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        font-size: 18px;
+        font-weight: 600;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        position: relative;
+        overflow: hidden;
+      }
+
+      .landing-btn:hover {
+        transform: translateY(-8px);
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+      }
+
+      .landing-btn:active {
+        transform: translateY(-2px);
+      }
+
+      #create-btn {
+        background: transparent;
+        border: 2px solid #ff8c00;
+        color: #ff8c00;
+      }
+
+      #create-btn:hover {
+        background: rgba(255, 140, 0, 0.1);
+        box-shadow: 0 0 30px rgba(255, 140, 0, 0.2);
+      }
+
+      #import-btn {
+        background: linear-gradient(135deg, #ff8c00 0%, #ff6b00 100%);
+        border: none;
+        color: white;
+      }
+
+      #import-btn:hover {
+        box-shadow: 0 0 30px rgba(255, 140, 0, 0.4);
+      }
+
+      .btn-icon {
+        width: 48px;
+        height: 48px;
+        margin-bottom: 8px;
+      }
+
+      @keyframes float {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-20px); }
+      }
+
+      @keyframes slideUp {
+        from { opacity: 0; transform: translateY(40px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+
+      /* Star Animation Styles */
+      .stars-container {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        z-index: -1;
+        pointer-events: none;
+      }
+
+      .star {
+        position: absolute;
+        background: white;
+        border-radius: 50%;
+        opacity: 0;
+        animation: rise var(--duration) linear infinite;
+        bottom: -20px;
+      }
+
+      @keyframes rise {
+        0% {
+          transform: translateY(0) translateX(0);
+          opacity: 0;
+        }
+        10% {
+          opacity: var(--opacity);
+        }
+        90% {
+          opacity: var(--opacity);
+        }
+        100% {
+          transform: translateY(-120vh) translateX(var(--drift));
+          opacity: 0;
+        }
+      }
+
+      /* Landing Page Layout */
+      .landing-content {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 100%;
+        z-index: 1;
+        position: relative;
+      }
+
+      .landing-logo {
+        width: 400px;
+        margin-bottom: 60px;
+        animation: float 6s ease-in-out infinite;
+        filter: drop-shadow(0 0 30px rgba(255, 140, 0, 0.2));
+      }
+
+      @keyframes float {
+        0% { transform: translateY(0px); }
+        50% { transform: translateY(-20px); }
+        100% { transform: translateY(0px); }
+      }
+
+      .landing-options {
+        display: flex;
+        gap: 40px;
+        justify-content: center;
+        width: 100%;
+        max-width: 1000px;
+      }
+
+      .landing-btn {
+        flex: 1;
+        height: 300px;
+        border-radius: 24px;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 24px;
+        font-size: 28px;
+        font-weight: 700;
+        transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        position: relative;
+        overflow: hidden;
+        background: rgba(255, 255, 255, 0.03);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: #e0e0e0;
+        animation: slideUp 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+      }
+
+      .landing-btn:nth-child(1) {
+        animation-delay: 0.2s;
+      }
+
+      .landing-btn:nth-child(2) {
+        animation-delay: 0.4s;
+      }
+
+      .landing-btn .btn-icon {
+        width: 80px;
+        height: 80px;
+        transition: transform 0.4s ease;
+      }
+
+      .landing-btn:hover {
+        transform: translateY(-15px) scale(1.02);
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+      }
+
+      .landing-btn:hover .btn-icon {
+        transform: scale(1.2) rotate(5deg);
+      }
+
+      #create-btn {
+        border: 2px solid #ff8c00;
+        color: #ff8c00;
+      }
+
+      #create-btn:hover {
+        background: rgba(255, 140, 0, 0.1);
+        box-shadow: 0 0 60px rgba(255, 140, 0, 0.2);
+      }
+
+      #import-btn {
+        background: linear-gradient(135deg, rgba(255, 140, 0, 0.8) 0%, rgba(255, 107, 0, 0.8) 100%);
+        border: none;
+        color: white;
+      }
+
+      #import-btn:hover {
+        box-shadow: 0 0 60px rgba(255, 140, 0, 0.4);
+      }
     </style>
   </head>
   <body>
+    <!-- Landing Page -->
+    <div id="landing-page">
+      <div class="stars-container" id="stars-container"></div>
+      
+      <div class="landing-content">
+        <img src="assets/genhat-removebg-preview.png" alt="GenHat Logo" class="landing-logo">
+        <div class="landing-options">
+          <button id="create-btn" class="landing-btn">
+            <i data-lucide="plus-circle" class="btn-icon"></i>
+            <span>Create New</span>
+          </button>
+          <button id="import-btn" class="landing-btn">
+            <i data-lucide="import" class="btn-icon"></i>
+            <span>Import Project</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main App Wrapper -->
+    <div id="app-container" style="display: none; opacity: 0; transition: opacity 0.5s ease-in-out;">
     <main style="display: flex; gap: 20px; height: 100vh; padding: 20px; box-sizing: border-box;">
       <!-- Left Sidebar: Action Buttons -->
       <div style="width: 60px; display: flex; flex-direction: column; gap: 12px; justify-content: flex-start;">
@@ -1091,6 +1345,70 @@
             </div>
           </div>
         `;
+      });
+    </script>
+    </div> <!-- End of app-container -->
+
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+        const landingPage = document.getElementById('landing-page');
+        const appContainer = document.getElementById('app-container');
+        const createBtn = document.getElementById('create-btn');
+        const importBtn = document.getElementById('import-btn');
+
+        // Initialize icons for landing page
+        if (typeof lucide !== 'undefined') {
+          lucide.createIcons({ root: landingPage });
+        }
+
+        // Generate Stars
+        const starsContainer = document.getElementById('stars-container');
+        const starCount = 100;
+
+        for (let i = 0; i < starCount; i++) {
+          const star = document.createElement('div');
+          star.className = 'star';
+          
+          // Random properties
+          const size = Math.random() * 3 + 1; // 1px to 4px
+          const left = Math.random() * 100; // 0% to 100%
+          const duration = Math.random() * 3 + 2; // 2s to 5s
+          const delay = Math.random() * 5; // 0s to 5s
+          const opacity = Math.random() * 0.7 + 0.3; // 0.3 to 1
+          const drift = (Math.random() - 0.5) * 200; // -100px to 100px horizontal drift
+
+          star.style.width = `${size}px`;
+          star.style.height = `${size}px`;
+          star.style.left = `${left}%`;
+          star.style.setProperty('--duration', `${duration}s`);
+          star.style.animationDelay = `${delay}s`;
+          star.style.setProperty('--opacity', opacity);
+          star.style.setProperty('--drift', `${drift}px`);
+
+          starsContainer.appendChild(star);
+        }
+
+        function showApp() {
+          landingPage.classList.add('hidden');
+          appContainer.style.display = 'block';
+          
+          // Trigger resize to fix layout
+          window.dispatchEvent(new Event('resize'));
+
+          setTimeout(() => {
+            appContainer.style.opacity = '1';
+          }, 50);
+          
+          setTimeout(() => {
+            landingPage.style.display = 'none';
+          }, 500);
+        }
+
+        createBtn.addEventListener('click', showApp);
+        
+        importBtn.addEventListener('click', () => {
+          console.log('Import clicked');
+        });
       });
     </script>
   </body>
