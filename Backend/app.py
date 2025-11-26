@@ -30,6 +30,7 @@ from dotenv import load_dotenv
 import platform
 import logging
 from prompt_cache import PromptCache
+import random
 
 load_dotenv()
 
@@ -1138,7 +1139,7 @@ async def call_gemini_api(prompt: str, api_key: str, model: str = "gemini-2.0-fl
         return f"[Gemini parse error: {e}]"
 
 
-def _build_multi_speaker_ssml(script_text: str, voice_a: str, voice_b: str, lang: str = "en-US") -> str:
+def _build_multi_speaker_ssml(script_text: str, voice_a: str, voice_b: str, name_a: str, name_b: str, lang: str = "en-US") -> str:
     """Build SSML for two-speaker podcast dialogue.
     
     Expects script in format:
@@ -1165,15 +1166,15 @@ def _build_multi_speaker_ssml(script_text: str, voice_a: str, voice_b: str, lang
             continue
         
         # Detect speaker and extract dialogue
-        if line.startswith('Host A:') or line.startswith('**Host A:**'):
-            text = line.replace('Host A:', '').replace('**Host A:**', '').strip()
+        if line.startswith(f'{name_a}:') or line.startswith(f'**{name_a}:**'):
+            text = line.replace(f'{name_a}:', '').replace(f'**{name_a}:**', '').strip()
             if text:  # Only add if there's actual content
                 safe_text = html.escape(text)
                 # Break must be INSIDE the voice tag for multi-voice SSML
                 ssml_parts.append(f'  <voice name="{voice_a}">{safe_text}<break time="500ms"/></voice>')
                 found_dialogue = True
-        elif line.startswith('Host B:') or line.startswith('**Host B:**'):
-            text = line.replace('Host B:', '').replace('**Host B:**', '').strip()
+        elif line.startswith(f'{name_b}:') or line.startswith(f'**{name_b}:**'):
+            text = line.replace(f'{name_b}:', '').replace(f'**{name_b}:**', '').strip()
             if text:  # Only add if there's actual content
                 safe_text = html.escape(text)
                 # Break must be INSIDE the voice tag for multi-voice SSML
@@ -1184,7 +1185,7 @@ def _build_multi_speaker_ssml(script_text: str, voice_a: str, voice_b: str, lang
     if not found_dialogue:
         print("⚠️ No dialogue format detected, falling back to single-voice SSML")
         ssml_parts = [f'<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="{lang}">']
-        safe_text = html.escape(script_text[:10000])
+        safe_text = html.escape(script_text)
         ssml_parts.append(f'  <voice name="{voice_a}">{safe_text}</voice>')
     
     ssml_parts.append('</speak>')
@@ -1202,6 +1203,27 @@ class PodcastFromPromptRequest(BaseModel):
     analysis_style: Optional[str] = "Provide: (1) Key Insights, (2) Actionable Recommendations, (3) Interesting Facts, (4) Potential Contradictions with sources, (5) Cross-connections."
     regenerate: Optional[bool] = False
 
+def get_voices():
+    voices = { "en-US-Andrew:DragonHDLatestNeural" : "Andy",
+                    "en-US-Andrew2:DragonHDLatestNeural" : "Benjamin",
+                    "en-US-Aria:DragonHDLatestNeural" : "Sansa",
+                    "en-US-Ava:DragonHDLatestNeural" : "Eva", 
+                    "en-US-Brian:DragonHDLatestNeural" : "Brian", 
+                    "en-US-Davis:DragonHDLatestNeural" : "Dave",
+                    "en-US-Emma:DragonHDLatestNeural" : "Amy", 
+                    "en-US-Emma2:DragonHDLatestNeural" : "Maria", 
+                    "en-US-Jenny:DragonHDLatestNeural" : "Jenny",
+                    "en-US-Steffan:DragonHDLatestNeural" : "Stevie"
+                    }
+
+    voice_a = random.choice(list(voices.keys()))
+    name_a = voices[voice_a]
+    new_voices = [v for v in voices.keys() if v != voice_a]
+    voice_b = random.choice(new_voices)
+    name_b = voices[voice_b]
+
+    return {voice_a: name_a, voice_b: name_b}
+
 @app.post("/podcast-from-prompt")
 async def podcast_from_prompt(req: PodcastFromPromptRequest):
     """End-to-end podcast generation from a single prompt.
@@ -1215,6 +1237,7 @@ async def podcast_from_prompt(req: PodcastFromPromptRequest):
         6. Persist insight (analysis + script + audio) under new insight_id.
     """
     try:
+        voices = get_voices()
         safe_project = _safe_project_name(req.project_name)
         meta = load_project_meta(safe_project)
         if not meta:
@@ -1291,9 +1314,16 @@ SECTIONS END
             if not analysis_text.startswith("[Gemini"):
                 await asyncio.to_thread(prompt_cache.set, analysis_cache_key, analysis_text, analysis_cache_context, {"chunk_count": use_n})
 
+        # Extract voice keys and names for script generation
+        voice_keys = list(voices.keys())
+        voice_a = voice_keys[0]
+        voice_b = voice_keys[1]
+        name_a = voices[voice_a]
+        name_b = voices[voice_b]
+
         # Script generation prompt - TWO SPEAKER CONVERSATION
         script_prompt = f"""
-You are writing a conversational podcast dialogue between TWO hosts discussing the topic.
+You are writing a conversational podcast dialogue between TWO hosts {name_a} and {name_b} discussing the topic.
 
 Prompt: {req.prompt}
 Domain: {detected_domain}
@@ -1301,8 +1331,8 @@ Domain: {detected_domain}
 Analysis Summary:\n{analysis_text[:6000]}\n---
 
 Task: Create a natural, engaging dialogue between Host A and Host B where:
-- Host A introduces topics and asks questions
-- Host B provides insights and explanations
+- {name_a} introduces topics and asks questions
+- {name_b} provides insights and explanations
 - They build on each other's points naturally
 - Reference Section numbers casually when discussing findings
 - Keep exchanges brief (2-3 sentences per turn)
@@ -1317,19 +1347,19 @@ CRITICAL FORMATTING RULES:
 5. Start immediately with dialogue - no introduction or preamble
 
 CORRECT FORMAT EXAMPLE:
-Host A: Welcome! Today we're exploring machine learning fundamentals. What caught your attention first in the analysis?
-Host B: Section 2 really stood out because it shows how neural networks process data in layers, which is fundamental to understanding deep learning.
-Host A: That's fascinating. How does that connect to what we saw in Section 4 about gradient descent?
-Host B: Great question! The gradient descent algorithm is what actually trains those neural network layers we discussed.
+{name_a}: Welcome! Today we're exploring machine learning fundamentals. What caught your attention first in the analysis?
+{name_b}: Section 2 really stood out because it shows how neural networks process data in layers, which is fundamental to understanding deep learning.
+{name_a}: That's fascinating. How does that connect to what we saw in Section 4 about gradient descent?
+{name_b}: Great question! The gradient descent algorithm is what actually trains those neural network layers we discussed.
 
 INCORRECT FORMAT (DO NOT DO THIS):
 Title: Machine Learning Fundamentals
-**Host A:** Welcome...
-(Host A introduces the topic)
+**{name_a}:** Welcome...
+({name_a} introduces the topic)
 "Welcome to the show..."
 
 ONLY use information from the provided analysis. Do NOT add fabricated details.
-Start your response with the first line of dialogue immediately.
+Start your response with the first line of dialogue immediately. In the podcast script generate with the names given in the prompt ONLY.
 """
 
         script_cache_key = f"SCRIPT:{req.prompt}"  # semantic intent key for script
@@ -1396,10 +1426,13 @@ Start your response with the first line of dialogue immediately.
                 speech_config.set_speech_synthesis_output_format(
                     speechsdk.SpeechSynthesisOutputFormat.Audio48Khz192KBitRateMonoMp3
                 )
-                # Two distinct voices for Host A and Host B
-                voice_a = "en-US-GuyNeural"  # Male voice for Host A
-                voice_b = "en-US-JennyNeural"  # Female voice for Host B
-                ssml = _build_multi_speaker_ssml(script_text[:15000], voice_a, voice_b, "en-US")
+            
+                voice_keys = list(voices.keys())
+                voice_a = voice_keys[0]
+                voice_b = voice_keys[1]
+                name_a = voices[voice_a]
+                name_b = voices[voice_b]
+                ssml = _build_multi_speaker_ssml(script_text, voice_a, voice_b, name_a, name_b, "en-US")
                 synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=None)
                 loop = asyncio.get_event_loop()
                 result = await loop.run_in_executor(None, lambda: synthesizer.speak_ssml_async(ssml).get())
