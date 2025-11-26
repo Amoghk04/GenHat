@@ -1263,6 +1263,58 @@ def _build_ssml(text: str, voice: str, rate: float, pitch: str, lang: str) -> st
   </voice>
 </speak>"""
 
+def _build_multi_speaker_ssml(script_text: str, voice_a: str, voice_b: str, lang: str = "en-US") -> str:
+    """Build SSML for two-speaker podcast dialogue.
+    
+    Expects script in format:
+    Host A: text
+    Host B: text
+    Host A: text
+    etc.
+    
+    Falls back to single-voice if format is not detected.
+    """
+    lines = script_text.strip().split('\n')
+    ssml_parts = [f'<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="{lang}">']
+    
+    # Track if we found any proper dialogue format
+    found_dialogue = False
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        
+        # Skip title lines
+        if line.lower().startswith('title:'):
+            continue
+        
+        # Detect speaker and extract dialogue
+        if line.startswith('Host A:') or line.startswith('**Host A:**'):
+            text = line.replace('Host A:', '').replace('**Host A:**', '').strip()
+            if text:  # Only add if there's actual content
+                safe_text = html.escape(text)
+                # Break must be INSIDE the voice tag for multi-voice SSML
+                ssml_parts.append(f'  <voice name="{voice_a}">{safe_text}<break time="500ms"/></voice>')
+                found_dialogue = True
+        elif line.startswith('Host B:') or line.startswith('**Host B:**'):
+            text = line.replace('Host B:', '').replace('**Host B:**', '').strip()
+            if text:  # Only add if there's actual content
+                safe_text = html.escape(text)
+                # Break must be INSIDE the voice tag for multi-voice SSML
+                ssml_parts.append(f'  <voice name="{voice_b}">{safe_text}<break time="500ms"/></voice>')
+                found_dialogue = True
+    
+    # If no dialogue format was found, fallback to single voice
+    if not found_dialogue:
+        print("⚠️ No dialogue format detected, falling back to single-voice SSML")
+        ssml_parts = [f'<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="{lang}">']
+        safe_text = html.escape(script_text[:10000])
+        ssml_parts.append(f'  <voice name="{voice_a}">{safe_text}</voice>')
+    
+    ssml_parts.append('</speak>')
+    return '\n'.join(ssml_parts)
+
 @app.post("/tts")
 async def tts(req: TTSRequest):
     try:
@@ -1560,23 +1612,45 @@ SECTIONS END
             if not analysis_text.startswith("[Gemini"):
                 await asyncio.to_thread(prompt_cache.set, analysis_cache_key, analysis_text, analysis_cache_context, {"chunk_count": use_n})
 
-        # Script generation prompt (use analysis)
+        # Script generation prompt - TWO SPEAKER CONVERSATION
         script_prompt = f"""
-You are writing a concise podcast monologue.
-Persona/Host: {req.persona}
+You are writing a conversational podcast dialogue between TWO hosts discussing the topic.
+
 Prompt: {req.prompt}
 Domain: {detected_domain}
 
-Analysis Summary (verbatim):\n{analysis_text[:6000]}\n---
-Task: Create a script with:
-1) A compelling title
-2) Engaging hook (1–2 lines)
-3) Narrative grouping key insights referencing Section numbers casually
-4) Actionable wrap-up
-Avoid hallucinations. Only use provided analysis.
-Output format:
-Title: <title>
-<paragraphs>
+Analysis Summary:\n{analysis_text[:6000]}\n---
+
+Task: Create a natural, engaging dialogue between Host A and Host B where:
+- Host A introduces topics and asks questions
+- Host B provides insights and explanations
+- They build on each other's points naturally
+- Reference Section numbers casually when discussing findings
+- Keep exchanges brief (2-3 sentences per turn)
+- Create 8-12 total exchanges
+- End with both hosts summarizing key takeaways
+
+CRITICAL FORMATTING RULES:
+1. EVERY line must start with EXACTLY "Host A: " or "Host B: " (including the space after colon)
+2. Do NOT use markdown formatting like **Host A:** or *Host B:*
+3. Do NOT include any lines without speaker tags (no titles, headers, or narrative descriptions)
+4. Do NOT use quotation marks around dialogue
+5. Start immediately with dialogue - no introduction or preamble
+
+CORRECT FORMAT EXAMPLE:
+Host A: Welcome! Today we're exploring machine learning fundamentals. What caught your attention first in the analysis?
+Host B: Section 2 really stood out because it shows how neural networks process data in layers, which is fundamental to understanding deep learning.
+Host A: That's fascinating. How does that connect to what we saw in Section 4 about gradient descent?
+Host B: Great question! The gradient descent algorithm is what actually trains those neural network layers we discussed.
+
+INCORRECT FORMAT (DO NOT DO THIS):
+Title: Machine Learning Fundamentals
+**Host A:** Welcome...
+(Host A introduces the topic)
+"Welcome to the show..."
+
+ONLY use information from the provided analysis. Do NOT add fabricated details.
+Start your response with the first line of dialogue immediately.
 """
 
         script_cache_key = f"SCRIPT:{req.prompt}"  # semantic intent key for script
@@ -1632,7 +1706,7 @@ Title: <title>
         except Exception as persist_err:
             print(f"⚠️ Failed to persist podcast insight {insight_id}: {persist_err}")
 
-        # TTS synthesis best-effort
+        # TTS synthesis with TWO VOICES best-effort
         audio_url = None
         try:
             import azure.cognitiveservices.speech as speechsdk  # type: ignore
@@ -1643,7 +1717,10 @@ Title: <title>
                 speech_config.set_speech_synthesis_output_format(
                     speechsdk.SpeechSynthesisOutputFormat.Audio48Khz192KBitRateMonoMp3
                 )
-                ssml = _build_ssml(script_text[:10000], req.voice or "en-US-AvaMultilingualNeural", 1.0, "0%", "en-US")
+                # Two distinct voices for Host A and Host B
+                voice_a = "en-US-GuyNeural"  # Male voice for Host A
+                voice_b = "en-US-JennyNeural"  # Female voice for Host B
+                ssml = _build_multi_speaker_ssml(script_text[:15000], voice_a, voice_b, "en-US")
                 synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=None)
                 loop = asyncio.get_event_loop()
                 result = await loop.run_in_executor(None, lambda: synthesizer.speak_ssml_async(ssml).get())
@@ -1651,12 +1728,18 @@ Title: <title>
                     audio_bytes = bytes(result.audio_data or b"")
                     (insight_dir/"podcast.mp3").write_bytes(audio_bytes)
                     audio_url = f"/insight-audio/{safe_project}/{insight_id}.mp3"
+                    print(f"✅ Two-speaker podcast audio generated: {len(audio_bytes)} bytes")
+                elif result.reason == speechsdk.ResultReason.Canceled:
+                    cancellation = speechsdk.CancellationDetails(result)
+                    print(f"❌ TTS Canceled: {cancellation.reason}. Error details: {cancellation.error_details}")
                 else:
-                    print("⚠️ TTS did not complete for podcast flow")
+                    print(f"⚠️ TTS did not complete for podcast flow, reason: {result.reason}")
             else:
                 print("ℹ️ Skipping TTS (missing credentials or script invalid).")
         except Exception as tts_err:
             print(f"⚠️ TTS failed for podcast flow: {tts_err}")
+            import traceback
+            traceback.print_exc()
 
         return {
             "insight_id": insight_id,
