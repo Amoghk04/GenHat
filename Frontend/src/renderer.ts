@@ -10,6 +10,7 @@ import {
 } from './api.js'
 
 import { PDFViewer } from './pdfViewer.js'
+import { showMindmapVisualization } from './mindmapVisualization.js'
 
 // Declare lucide global
 declare const lucide: any
@@ -1622,7 +1623,74 @@ function initializeApp() {
         const analysisResponse = await analyzeChunksWithGemini(appState.cacheKey, persona, task, 5, 5)
         hideTypingIndicator()
         if (analysisResponse.gemini_analysis && analysisResponse.gemini_analysis.length > 0) {
-          addChatMessage(analysisResponse.gemini_analysis[0].gemini_analysis, false)
+          const analysis = analysisResponse.gemini_analysis[0].gemini_analysis
+
+          // Add mindmap button if in mindmap mode
+          if (currentPlatform === 'mindmap') {
+            // Create message wrapper
+            const messageWrapper = document.createElement('div')
+            messageWrapper.className = 'message-item-wrapper'
+
+            // Create message bubble with button inside
+            const bubble = document.createElement('div')
+            bubble.className = 'message-bubble'
+            bubble.style.cssText = `
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              padding: 16px;
+            `
+
+            const showMindmapBtn = document.createElement('button')
+            showMindmapBtn.style.cssText = `
+              background: linear-gradient(135deg, #ff8c00 0%, #ff6b00 100%);
+              border: none;
+              border-radius: 6px;
+              padding: 10px 20px;
+              color: white;
+              font-weight: 600;
+              cursor: pointer;
+              transition: all 0.2s ease;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              gap: 8px;
+              font-size: 14px;
+            `
+            showMindmapBtn.innerHTML = `
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2c1.657 0 3 1.343 3 3s-1.343 3-3 3-3-1.343-3-3 1.343-3 3-3z"></path>
+                <path d="M6 9c1.657 0 3 1.343 3 3s-1.343 3-3 3-3-1.343-3-3 1.343-3 3-3z"></path>
+                <path d="M18 9c1.657 0 3 1.343 3 3s-1.343 3-3 3-3-1.343-3-3 1.343-3 3-3z"></path>
+                <path d="M15 17c1.657 0 3 1.343 3 3s-1.343 3-3 3-3-1.343-3-3 1.343-3 3-3z"></path>
+                <path d="M9 17c1.657 0 3 1.343 3 3s-1.343 3-3 3-3-1.343-3-3 1.343-3 3-3z"></path>
+                <line x1="12" y1="5" x2="6" y2="9"></line>
+                <line x1="12" y1="5" x2="18" y2="9"></line>
+                <line x1="6" y1="12" x2="9" y2="17"></line>
+                <line x1="18" y1="12" x2="15" y2="17"></line>
+              </svg>
+              Open in New Window
+            `
+            showMindmapBtn.addEventListener('mouseover', () => {
+              showMindmapBtn.style.transform = 'translateY(-2px)'
+              showMindmapBtn.style.boxShadow = '0 4px 12px rgba(255, 140, 0, 0.4)'
+            })
+            showMindmapBtn.addEventListener('mouseout', () => {
+              showMindmapBtn.style.transform = 'translateY(0)'
+              showMindmapBtn.style.boxShadow = 'none'
+            })
+            showMindmapBtn.addEventListener('click', () => {
+              showMindmapVisualization(analysis, `Mind Map - ${task.substring(0, 30)}...`)
+            })
+
+            bubble.appendChild(showMindmapBtn)
+            messageWrapper.appendChild(bubble)
+            chatContainerEl.appendChild(messageWrapper)
+            chatContainerEl.scrollTop = chatContainerEl.scrollHeight
+          } else {
+            // For non-mindmap modes, show the analysis as a message
+            addChatMessage(analysis, false)
+          }
         } else {
           addChatMessage('I analyzed your documents but could not produce insights. Try rephrasing.', false)
         }
