@@ -1077,6 +1077,7 @@ function initializeApp() {
     `
 
     const dialog = document.createElement('div')
+    dialog.className = 'hide-scrollbar'
     dialog.style.cssText = `
       background: #0d0d0d;
       border: 2px solid #ff8c00;
@@ -1087,6 +1088,7 @@ function initializeApp() {
       max-height: 80vh;
       overflow-y: auto;
       box-shadow: 0 8px 32px rgba(255, 140, 0, 0.3);
+      position: relative;
     `
 
     const title = document.createElement('h3')
@@ -1098,6 +1100,7 @@ function initializeApp() {
       display: flex;
       align-items: center;
       gap: 8px;
+      padding-right: 30px;
     `
     title.innerHTML = '<i data-lucide="file-text" style="width: 20px; height: 20px;"></i> Podcast Script'
 
@@ -1111,20 +1114,12 @@ function initializeApp() {
     `
     content.textContent = script
 
-    const closeBtn = document.createElement('button')
-    closeBtn.textContent = 'Close'
-    closeBtn.style.cssText = `
-      background: #2a2a2a;
-      border: 1px solid #666;
-      border-radius: 6px;
-      padding: 10px 20px;
-      color: #e0e0e0;
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.2s ease;
-      margin-top: 16px;
-    `
+    
+    const closeBtn = document.createElement('button');
+    closeBtn.innerHTML = '<i data-lucide="x" style="width: 20px; height: 20px;"></i>';
+    closeBtn.classList.add('close-btn','close-btn-top');
+
+
     closeBtn.addEventListener('click', () => {
       modal.remove()
     })
