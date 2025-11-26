@@ -1549,14 +1549,12 @@ function initializeApp() {
         const podcastResp = await podcastFromPrompt(appState.projectName, message, 5, 'Podcast Host')
         hideTypingIndicator()
         
-        // Parse title from script
-        const script = podcastResp.script
-        const titleMatch = script.match(/^Title:\s*(.+)$/m)
-        const title = titleMatch ? titleMatch[1].trim() : `Podcast ${podcastResp.insight_id.slice(0,8)}`
+        // Use title from API response
+        const title = podcastResp.title || `Podcast ${podcastResp.insight_id.slice(0,8)}`
         
-        // Build chat message with embedded audio player
+        // Build chat message with embedded audio player and title
         const fullAudioUrl = podcastResp.audio_url ? `http://localhost:8080${podcastResp.audio_url}` : null
-        let podcastChatMessage = '<span style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;"><i data-lucide="mic" style="width: 20px; height: 20px; color: #ff8c00;"></i> <strong style="font-size: 1.1em;">Podcast Generated</strong></span>\n\n'
+        let podcastChatMessage = `<span style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;"><i data-lucide="mic" style="width: 20px; height: 20px; color: #ff8c00;"></i> <strong style="font-size: 1.1em;">${title}</strong></span>\n\n`
         if (fullAudioUrl) {
           podcastChatMessage += `[[AUDIO_PLAYER:${fullAudioUrl}|${podcastResp.script.replace(/\|/g, '\\|').replace(/\]/g, '\\]')}]]\n\n`
         }

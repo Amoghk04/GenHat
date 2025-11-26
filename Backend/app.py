@@ -1379,6 +1379,9 @@ Start your response with the first line of dialogue immediately. In the podcast 
 
         # Persist insight directory
         insight_id = uuid.uuid4().hex
+        title = req.prompt[:50].strip()
+        if len(req.prompt) > 50:
+            title += "..."
         insight_dir = _insight_dir(safe_project, insight_id)
         insight_dir.mkdir(parents=True, exist_ok=True)
         try:
@@ -1386,6 +1389,7 @@ Start your response with the first line of dialogue immediately. In the podcast 
             async with aiofiles.open(insight_dir/"analysis.json", "w", encoding="utf-8") as f:
                 await f.write(json.dumps({
                     "metadata": {
+                        "title": title,
                         "input_documents": [f.get("name") for f in meta.get("files", [])],
                         "persona": req.persona,
                         "job_to_be_done": req.prompt,
@@ -1455,6 +1459,7 @@ Start your response with the first line of dialogue immediately. In the podcast 
 
         return {
             "insight_id": insight_id,
+            "title": title,
             "script": script_text,
             "analysis": analysis_text[:1500],  # trimmed preview
             "audio_url": audio_url,

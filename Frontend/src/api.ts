@@ -95,6 +95,7 @@ export interface AnalyzeChunksResponse {
 
 export interface PodcastFromPromptResponse {
   insight_id: string
+  title: string
   script: string
   analysis: string
   audio_url: string | null
