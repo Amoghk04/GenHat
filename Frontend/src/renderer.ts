@@ -15,11 +15,25 @@ import { showMindmapVisualization } from './mindmapVisualization.js'
 // Declare lucide global
 declare const lucide: any
 
+// Electron API Interface
+interface ElectronAPI {
+  saveProject: (content: any) => Promise<boolean>
+  loadProject: () => Promise<any>
+  readFile: (path: string) => Promise<Uint8Array | null>
+}
+
+declare global {
+  interface Window {
+    electronAPI: ElectronAPI
+  }
+}
+
 type FileEntry = {
   name: string
   file: File
   url?: string
   thumbnail?: string
+  path?: string
 }
 
 type Platform = 'mindmap' | 'podcast' | 'more'
@@ -38,6 +52,57 @@ type AppState = {
   isProcessing: boolean
   currentPersona: string
   currentTask: string
+}
+
+// Helper to convert Blob/File to Base64
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      const result = reader.result as string
+      // Remove data URL prefix (e.g. "data:application/pdf;base64,")
+      const base64 = result.split(',')[1]
+      resolve(base64)
+    }
+    reader.onerror = reject
+    reader.readAsDataURL(blob)
+  })
+}
+
+// Helper to save project
+async function saveCurrentProject(appState: AppState, chatMessages: ChatMessage[], tabs: Map<string, any>, files: FileEntry[], activeTabId: string) {
+  // Sync current chat messages to the active tab before saving
+  const activeTab = tabs.get(activeTabId)
+  if (activeTab) {
+    activeTab.messages = chatMessages
+  }
+
+  // Convert files to Base64 for embedding
+  const filesWithData = await Promise.all(files.map(async f => ({
+    name: f.name,
+    data: await blobToBase64(f.file)
+  })))
+
+  const projectState = {
+    version: '1.0',
+    projectName: appState.projectName,
+    lastModified: new Date().toISOString(),
+    appState,
+    chatMessages, // Current active chat
+    tabs: Array.from(tabs.entries()),
+    files: filesWithData,
+    activeTabId // Save which tab was active
+  }
+  
+  try {
+    const success = await window.electronAPI.saveProject(projectState)
+    if (success) {
+      alert(`Project saved successfully!\nEmbedded ${files.length} PDF(s) into the .genhat file.`)
+    }
+  } catch (error) {
+    console.error('Failed to save project:', error)
+    alert('Failed to save project')
+  }
 }
 
 // Main initialization function
@@ -62,12 +127,19 @@ function initializeApp() {
   const newChatBtn = document.getElementById('newChatBtn') as HTMLButtonElement | null
   const newMindmapBtn = document.getElementById('newMindmapBtn') as HTMLButtonElement | null
   const newPodcastBtn = document.getElementById('newPodcastBtn') as HTMLButtonElement | null
+  const moreOptionsBtn = document.getElementById('moreOptionsBtn') as HTMLButtonElement | null
 
   const tabsContainerEl = document.getElementById('tabsContainer') as HTMLDivElement | null
 
+  // Landing Page Elements
+  const createBtn = document.getElementById('create-btn') as HTMLButtonElement | null
+  const importBtn = document.getElementById('import-btn') as HTMLButtonElement | null
+  const landingPage = document.getElementById('landing-page') as HTMLDivElement | null
+  const appContainer = document.getElementById('app-container') as HTMLDivElement | null
+
   if (!fileInput || !fileListEl || !chatContainer || !chatInput || !sendButton || 
       !popupModal || !popupTitle || !popupBody || !closePopup || 
-      !newChatBtn || !newMindmapBtn || !newPodcastBtn || !tabsContainerEl) {
+      !newChatBtn || !newMindmapBtn || !newPodcastBtn || !moreOptionsBtn || !tabsContainerEl) {
     console.error('❌ Renderer: missing expected DOM elements', {
       fileInput: !!fileInput,
       fileListEl: !!fileListEl,
@@ -81,6 +153,7 @@ function initializeApp() {
       newChatBtn: !!newChatBtn,
       newMindmapBtn: !!newMindmapBtn,
       newPodcastBtn: !!newPodcastBtn,
+      moreOptionsBtn: !!moreOptionsBtn,
       tabsContainerEl: !!tabsContainerEl
     })
     return
@@ -226,6 +299,128 @@ function initializeApp() {
     renderTabs()
   })
 
+  // Landing Page Logic
+  function showApp() {
+    if (landingPage && appContainer) {
+      landingPage.classList.add('hidden')
+      appContainer.style.display = 'block'
+      window.dispatchEvent(new Event('resize'))
+      setTimeout(() => {
+        appContainer.style.opacity = '1'
+      }, 50)
+      setTimeout(() => {
+        landingPage.style.display = 'none'
+      }, 500)
+    }
+  }
+
+  if (createBtn) {
+    createBtn.addEventListener('click', showApp)
+  }
+
+  if (importBtn) {
+    importBtn.addEventListener('click', async () => {
+      try {
+        const projectData = await window.electronAPI.loadProject()
+        if (projectData) {
+          // Restore App State
+          if (projectData.appState) {
+            Object.assign(appState, projectData.appState)
+          }
+          
+          // Restore Tabs
+          if (projectData.tabs) {
+            tabs = new Map(projectData.tabs)
+            renderTabs()
+          }
+
+          // Restore Active Tab ID
+          if (projectData.activeTabId) {
+            activeTabId = projectData.activeTabId
+          }
+          
+          // Restore Chat Messages (for active tab)
+          if (projectData.chatMessages) {
+            chatMessages = projectData.chatMessages
+            // If active tab is default, update it
+            const activeTab = tabs.get(activeTabId)
+            if (activeTab) {
+              activeTab.messages = chatMessages
+            }
+            // Re-render chat
+            chatContainerEl.innerHTML = ''
+            chatMessages.forEach(msg => addChatMessage(msg.text, msg.isUser, msg.branchFrom, true))
+          }
+
+          // Restore Files
+          if (projectData.files) {
+            console.log('[Renderer] Restoring files from embedded data...')
+            files = [] // Clear existing files
+            fileListElm.innerHTML = '' // Clear UI list
+            
+            const restoredFilesForCache: File[] = []
+
+            for (const f of projectData.files) {
+              try {
+                if (f.data) {
+                  // Convert Base64 back to Blob
+                  const byteCharacters = atob(f.data)
+                  const byteNumbers = new Array(byteCharacters.length)
+                  for (let i = 0; i < byteCharacters.length; i++) {
+                    byteNumbers[i] = byteCharacters.charCodeAt(i)
+                  }
+                  const byteArray = new Uint8Array(byteNumbers)
+                  const blob = new Blob([byteArray], { type: 'application/pdf' })
+                  const file = new File([blob], f.name, { type: 'application/pdf' })
+                  
+                  const entry: FileEntry = {
+                    name: f.name,
+                    file: file,
+                    url: URL.createObjectURL(file)
+                  }
+                  
+                  files.push(entry)
+                  restoredFilesForCache.push(file)
+                  addFileToList(entry, files.length - 1)
+                } else {
+                  console.warn('File entry missing data:', f.name)
+                }
+              } catch (err) {
+                console.error('Failed to load restored file:', f.name, err)
+              }
+            }
+
+            // Re-index restored files
+            if (restoredFilesForCache.length > 0) {
+              try {
+                console.log('[Renderer] Re-indexing restored files...')
+                // Clear old cache key to force fresh session/check
+                appState.cacheKey = null 
+                
+                const cacheResponse = await cachePDFs(restoredFilesForCache, appState.projectName)
+                appState.cacheKey = cacheResponse.cache_key
+                console.log('[Renderer] Re-indexing complete. New cache key:', appState.cacheKey)
+                
+                // Wait for processing if needed
+                await waitForCacheReadyWithProgress(appState.cacheKey, (status) => {
+                   console.log('[Renderer] Indexing progress:', status)
+                })
+              } catch (err) {
+                console.error('Failed to re-index restored files:', err)
+                addChatMessage('⚠️ Restored files loaded, but AI indexing failed. Some features may be unavailable.', false)
+              }
+            }
+          }
+
+          showApp()
+        }
+      } catch (error) {
+        console.error('Failed to import project:', error)
+        alert('Failed to import project')
+      }
+    })
+  }
+
   // Initialize default tab
   tabs.set('default', {
     id: 'default',
@@ -247,6 +442,78 @@ function initializeApp() {
   }
 
   let currentPDFViewer: PDFViewer | null = null
+
+  // Add file to UI list
+  function addFileToList(entry: FileEntry, index: number) {
+    const li = document.createElement('li')
+    li.style.cssText = `
+      padding: 10px;
+      border-bottom: 1px solid #2a2a2a;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      transition: background 0.2s;
+    `
+    li.innerHTML = `
+      <div style="width: 32px; height: 32px; background: #2a2a2a; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: #ff8c00;">
+        <i data-lucide="file-text" style="width: 18px; height: 18px;"></i>
+      </div>
+      <div style="flex: 1; overflow: hidden;">
+        <div style="font-size: 13px; color: #e0e0e0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${entry.name}</div>
+        <div style="font-size: 11px; color: #666;">PDF Document</div>
+      </div>
+      <button class="delete-btn" style="background: none; border: none; color: #666; cursor: pointer; padding: 4px; display: none;">
+        <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
+      </button>
+    `
+    
+    // Hover effects
+    li.addEventListener('mouseenter', () => {
+      li.style.background = '#2a2a2a'
+      const delBtn = li.querySelector('.delete-btn') as HTMLElement
+      if (delBtn) delBtn.style.display = 'block'
+    })
+    li.addEventListener('mouseleave', () => {
+      li.style.background = 'transparent'
+      const delBtn = li.querySelector('.delete-btn') as HTMLElement
+      if (delBtn) delBtn.style.display = 'none'
+    })
+
+    // Click to open
+    li.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).closest('.delete-btn')) return
+      openPDFViewer(entry)
+    })
+
+    // Delete button
+    const delBtn = li.querySelector('.delete-btn')
+    if (delBtn) {
+      delBtn.addEventListener('click', async (e) => {
+        e.stopPropagation()
+        if (confirm(`Remove ${entry.name}?`)) {
+          // Remove from backend
+          if (appState.cacheKey) {
+            await removePDF(appState.cacheKey, entry.name)
+          }
+          
+          // Remove from local state
+          files.splice(index, 1)
+          li.remove()
+          
+          // Re-render list to update indices
+          fileListElm.innerHTML = ''
+          files.forEach((f, i) => addFileToList(f, i))
+        }
+      })
+    }
+
+    fileListElm.appendChild(li)
+    
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons({ root: li, nameAttr: 'data-lucide' })
+    }
+  }
 
   // Tab management functions
   function createNewTab(type: 'chat' | 'mindmap' | 'podcast'): string {
@@ -504,6 +771,9 @@ function initializeApp() {
         title = '⚙️ More Options'
         content = `
           <div style="display: flex; flex-direction: column; gap: 12px;">
+            <button id="saveProjectBtn" style="background: linear-gradient(135deg, #ff8c00 0%, #ff6b00 100%); border: none; border-radius: 6px; padding: 10px 20px; color: white; font-weight: 600; cursor: pointer; text-align: left; display: flex; align-items: center; gap: 8px;">
+              <i data-lucide="save" style="width: 18px; height: 18px;"></i> Save Project
+            </button>
             <button style="background: #2a2a2a; border: 1px solid #ff8c00; border-radius: 6px; padding: 10px 20px; color: #ff8c00; font-weight: 600; cursor: pointer; text-align: left;">
               ⚙️ Settings
             </button>
@@ -521,6 +791,20 @@ function initializeApp() {
     popupTitle!.textContent = title
     popupBody!.innerHTML = content
     popupModal!.classList.add('active')
+
+    // Attach listeners
+    if (platform === 'more') {
+      const saveBtn = document.getElementById('saveProjectBtn')
+      if (saveBtn) {
+        saveBtn.addEventListener('click', () => {
+          saveCurrentProject(appState, chatMessages, tabs, files, activeTabId)
+        })
+      }
+    }
+
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons({ root: popupBody, nameAttr: 'data-lucide' })
+    }
   }
 
   // Open PDF viewer in popup with text selection support
@@ -1152,7 +1436,7 @@ function initializeApp() {
   }
 
   // Add message to chat
-  function addChatMessage(text: string, isUser: boolean, branchFrom?: string) {
+  function addChatMessage(text: string, isUser: boolean, branchFrom?: string, skipStateUpdate: boolean = false) {
     const messageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
     const message: ChatMessage = {
       text,
@@ -1161,10 +1445,13 @@ function initializeApp() {
       id: messageId,
       branchFrom
     }
-    chatMessages.push(message)
+    
+    if (!skipStateUpdate) {
+      chatMessages.push(message)
+    }
 
     // Clear welcome message if this is first message
-    if (chatMessages.length === 1) {
+    if (chatContainerEl.children.length === 1 && chatContainerEl.querySelector('div[style*="text-align: center"]')) {
       chatContainerEl.innerHTML = ''
     }
 
@@ -1190,7 +1477,7 @@ function initializeApp() {
     // Create copy button
     const copyBtn = document.createElement('button')
     copyBtn.className = 'message-copy-btn'
-    copyBtn.innerHTML = `<i data-lucide="copy" style="width: 16px; height: 16px;"></i>`
+    copyBtn.innerHTML = `<i data-lucide="copy" style="width: 16px, height: 16px;"></i>`
     copyBtn.title = 'Copy message'
     copyBtn.addEventListener('click', async (e) => {
       e.stopPropagation()
@@ -1217,7 +1504,7 @@ function initializeApp() {
     if (isUser) {
       const editBtn = document.createElement('button')
       editBtn.className = 'message-edit-btn'
-      editBtn.innerHTML = `<i data-lucide="edit-2" style="width: 16px; height: 16px;"></i>`
+      editBtn.innerHTML = `<i data-lucide="edit-2" style="width: 16px, height: 16px;"></i>`
       editBtn.title = 'Edit and continue'
       editBtn.addEventListener('click', (e) => {
         e.stopPropagation()
@@ -1724,7 +2011,7 @@ function initializeApp() {
     const persona = appState.currentPersona
     const task = editedText
     try {
-      showTypingIndicator()
+           showTypingIndicator()
       if (currentPlatform === 'podcast') {
         addChatMessage('🎙️ Regenerating podcast with edited prompt...', false)
         const podcastResp = await podcastFromPrompt(appState.projectName, editedText, 5, 'Podcast Host')
@@ -1874,7 +2161,11 @@ function initializeApp() {
     if (!selected || selected.length === 0) return
 
     // Add new files to existing list instead of replacing
-    const newFiles = Array.from(selected).map(f => ({ name: f.name, file: f }))
+    const newFiles = Array.from(selected).map(f => ({ 
+      name: f.name, 
+      file: f,
+      path: (f as any).path // Capture path from Electron File object
+    }))
     
     // Filter out duplicates by name
     const uniqueNewFiles: FileEntry[] = []
@@ -1944,6 +2235,10 @@ function initializeApp() {
   newPodcastBtn!.addEventListener('click', () => {
     const tabId = createNewTab('podcast')
     addChatMessage('Podcast Mode - I can create or discuss podcast content based on your documents. What would you like to explore?', false)
+  })
+
+  moreOptionsBtn.addEventListener('click', () => {
+    showPopup('more')
   })
 
   // Chat input enter key
