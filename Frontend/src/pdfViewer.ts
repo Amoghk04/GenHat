@@ -41,8 +41,8 @@ export class PDFViewer {
       // Create viewer UI
       this.createViewerUI()
 
-      // Render first page
-      await this.renderPage(1)
+      // Render all pages
+      await this.renderAllPages()
     } catch (error) {
       console.error('Error loading PDF:', error)
       if (this.onError) {
@@ -61,27 +61,56 @@ export class PDFViewer {
     if (!this.pdf) return
 
     this.container.innerHTML = `
+      <style>
+        #pdfCanvasContainer::-webkit-scrollbar {
+          width: 10px;
+          background: #1a1a1a;
+        }
+        #pdfCanvasContainer::-webkit-scrollbar-track {
+          background: #1a1a1a;
+        }
+        #pdfCanvasContainer::-webkit-scrollbar-thumb {
+          background: #ff8c00;
+          border-radius: 5px;
+          border: 2px solid #1a1a1a;
+        }
+        #pdfCanvasContainer::-webkit-scrollbar-thumb:hover {
+          background: #ff6b00;
+        }
+        .pdf-page-container {
+          position: relative;
+          background: white;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+          margin-bottom: 20px;
+        }
+        /* Hide spin buttons for number input */
+        #pageInput::-webkit-outer-spin-button,
+        #pageInput::-webkit-inner-spin-button {
+          -webkit-appearance: none;
+          margin: 0;
+        }
+        #pageInput {
+          -moz-appearance: textfield;
+        }
+      </style>
       <div style="display: flex; flex-direction: column; height: 100%; background: #1a1a1a;">
         <!-- Toolbar -->
         <div id="pdfToolbar" style="display: flex; align-items: center; justify-content: space-between; padding: 12px; background: #0d0d0d; border-bottom: 1px solid #2a2a2a;">
           <div style="display: flex; align-items: center; gap: 8px;">
-            <button id="prevPage" style="background: #2a2a2a; border: 1px solid #3a3a3a; color: #e0e0e0; padding: 6px 12px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center;"><i data-lucide="chevron-left" style="width: 16px; height: 16px;"></i></button>
-            <span id="pageInfo" style="color: #e0e0e0; font-size: 14px;">Page 1 of ${this.pdf.numPages}</span>
-            <button id="nextPage" style="background: #2a2a2a; border: 1px solid #3a3a3a; color: #e0e0e0; padding: 6px 12px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center;"><i data-lucide="chevron-right" style="width: 16px; height: 16px;"></i></button>
+            <span style="color: #e0e0e0; font-size: 14px;">Page</span>
+            <input type="number" id="pageInput" value="1" min="1" max="${this.pdf.numPages}" style="background: #2a2a2a; border: 1px solid #3a3a3a; color: #e0e0e0; padding: 4px 8px; border-radius: 4px; width: 50px; text-align: center;">
+            <span style="color: #e0e0e0; font-size: 14px;">of ${this.pdf.numPages}</span>
           </div>
           <div style="display: flex; align-items: center; gap: 8px;">
             <button id="zoomOut" style="background: #2a2a2a; border: 1px solid #3a3a3a; color: #e0e0e0; padding: 6px 12px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center;"><i data-lucide="minus" style="width: 16px; height: 16px;"></i></button>
-            <span style="color: #e0e0e0; font-size: 14px;">${Math.round(this.scale * 100)}%</span>
+            <span id="zoomLevel" style="color: #e0e0e0; font-size: 14px;">${Math.round(this.scale * 100)}%</span>
             <button id="zoomIn" style="background: #2a2a2a; border: 1px solid #3a3a3a; color: #e0e0e0; padding: 6px 12px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center;"><i data-lucide="plus" style="width: 16px; height: 16px;"></i></button>
           </div>
         </div>
         
         <!-- Canvas container -->
-        <div id="pdfCanvasContainer" style="flex: 1; overflow: auto; display: flex; justify-content: center; align-items: flex-start; padding: 20px; background: #1a1a1a;">
-          <div style="position: relative; background: white; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
-            <canvas id="pdfCanvas"></canvas>
-            <div id="textLayer" class="textLayer" style="position: absolute; left: 0; top: 0; right: 0; bottom: 0; overflow: hidden; opacity: 1; color: transparent; line-height: 1.0; cursor: text; text-align: initial;"></div>
-          </div>
+        <div id="pdfCanvasContainer" style="flex: 1; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; align-items: center; padding: 20px; background: #1a1a1a;">
+          <div id="pagesWrapper"></div>
         </div>
       </div>
     `
@@ -99,19 +128,10 @@ export class PDFViewer {
   }
 
   private setupEventListeners(): void {
-    const prevBtn = this.container.querySelector('#prevPage') as HTMLButtonElement
-    const nextBtn = this.container.querySelector('#nextPage') as HTMLButtonElement
     const zoomInBtn = this.container.querySelector('#zoomIn') as HTMLButtonElement
     const zoomOutBtn = this.container.querySelector('#zoomOut') as HTMLButtonElement
-    const textLayer = this.container.querySelector('#textLayer') as HTMLDivElement
-
-    if (prevBtn) {
-      prevBtn.addEventListener('click', () => this.previousPage())
-    }
-
-    if (nextBtn) {
-      nextBtn.addEventListener('click', () => this.nextPage())
-    }
+    const pageInput = this.container.querySelector('#pageInput') as HTMLInputElement
+    const pdfCanvasContainer = this.container.querySelector('#pdfCanvasContainer') as HTMLDivElement
 
     if (zoomInBtn) {
       zoomInBtn.addEventListener('click', () => this.zoomIn())
@@ -121,60 +141,103 @@ export class PDFViewer {
       zoomOutBtn.addEventListener('click', () => this.zoomOut())
     }
 
-    // Text selection handler
-    if (textLayer) {
-      textLayer.addEventListener('mouseup', () => {
-        const selection = window.getSelection()
-        if (selection && selection.toString().trim().length > 0) {
-          const selectedText = selection.toString().trim()
-          if (this.onTextSelected) {
-            this.onTextSelected(selectedText, this.currentPage)
+    if (pageInput) {
+      pageInput.addEventListener('change', () => {
+        const pageNum = parseInt(pageInput.value)
+        if (pageNum >= 1 && pageNum <= this.pdf.numPages) {
+          this.scrollToPage(pageNum)
+        }
+      })
+      
+      pageInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          const pageNum = parseInt(pageInput.value)
+          if (pageNum >= 1 && pageNum <= this.pdf.numPages) {
+            this.scrollToPage(pageNum)
+            pageInput.blur()
           }
         }
       })
     }
+
+    if (pdfCanvasContainer) {
+      pdfCanvasContainer.addEventListener('scroll', () => {
+        this.updateCurrentPageFromScroll()
+      })
+    }
   }
 
-  private async renderPage(pageNumber: number): Promise<void> {
+  private async renderAllPages(): Promise<void> {
     if (!this.pdf) return
 
-    try {
-      const page = await this.pdf.getPage(pageNumber)
-      
-      const canvas = this.container.querySelector('#pdfCanvas') as HTMLCanvasElement
-      const textLayer = this.container.querySelector('#textLayer') as HTMLDivElement
-      
-      if (!canvas || !textLayer) return
+    const pagesWrapper = this.container.querySelector('#pagesWrapper') as HTMLDivElement
+    if (!pagesWrapper) return
+    
+    pagesWrapper.innerHTML = '' // Clear existing pages
 
-      const context = canvas.getContext('2d')
-      if (!context) return
+    for (let pageNum = 1; pageNum <= this.pdf.numPages; pageNum++) {
+      try {
+        const page = await this.pdf.getPage(pageNum)
+        const viewport = page.getViewport({ scale: this.scale })
 
-      const viewport = page.getViewport({ scale: this.scale })
+        // Create page container
+        const pageContainer = document.createElement('div')
+        pageContainer.className = 'pdf-page-container'
+        pageContainer.id = `page-container-${pageNum}`
+        pageContainer.setAttribute('data-page-number', pageNum.toString())
+        pageContainer.style.width = `${viewport.width}px`
+        pageContainer.style.height = `${viewport.height}px`
+        pageContainer.style.setProperty('--scale-factor', this.scale.toString())
+        
+        // Create canvas
+        const canvas = document.createElement('canvas')
+        canvas.height = viewport.height
+        canvas.width = viewport.width
+        
+        // Create text layer
+        const textLayer = document.createElement('div')
+        textLayer.className = 'textLayer'
+        textLayer.style.position = 'absolute'
+        textLayer.style.left = '0'
+        textLayer.style.top = '0'
+        textLayer.style.right = '0'
+        textLayer.style.bottom = '0'
+        textLayer.style.overflow = 'hidden'
+        textLayer.style.opacity = '1'
+        textLayer.style.lineHeight = '1.0'
+        textLayer.style.width = `${viewport.width}px`
+        textLayer.style.height = `${viewport.height}px`
 
-      // Set canvas dimensions
-      canvas.height = viewport.height
-      canvas.width = viewport.width
+        pageContainer.appendChild(canvas)
+        pageContainer.appendChild(textLayer)
+        pagesWrapper.appendChild(pageContainer)
 
-      // Set text layer dimensions
-      textLayer.style.width = `${viewport.width}px`
-      textLayer.style.height = `${viewport.height}px`
+        // Render page
+        const context = canvas.getContext('2d')
+        if (context) {
+          const renderContext = {
+            canvasContext: context,
+            viewport: viewport
+          }
+          await page.render(renderContext).promise
+        }
 
-      // Render PDF page
-      const renderContext = {
-        canvasContext: context,
-        viewport: viewport
-      }
-      await page.render(renderContext).promise
+        // Render text layer
+        await this.renderTextLayer(page, viewport, textLayer)
+        
+        // Add text selection listener for this page
+        textLayer.addEventListener('mouseup', () => {
+          const selection = window.getSelection()
+          if (selection && selection.toString().trim().length > 0) {
+            const selectedText = selection.toString().trim()
+            if (this.onTextSelected) {
+              this.onTextSelected(selectedText, pageNum)
+            }
+          }
+        })
 
-      // Render text layer for selection
-      await this.renderTextLayer(page, viewport, textLayer)
-
-      this.currentPage = pageNumber
-      this.updatePageInfo()
-    } catch (error) {
-      console.error('Error rendering page:', error)
-      if (this.onError) {
-        this.onError(error instanceof Error ? error : new Error('Failed to render page'))
+      } catch (error) {
+        console.error(`Error rendering page ${pageNum}:`, error)
       }
     }
   }
@@ -191,7 +254,7 @@ export class PDFViewer {
       // Use PDF.js built-in text layer renderer for proper metrics and selection
       const textContent = await page.getTextContent({ disableCombineTextItems: false })
       const renderTask = pdfjsLib.renderTextLayer({
-        textContent,
+        textContentSource: textContent,
         container,
         viewport,
         textDivs: [],
@@ -211,35 +274,64 @@ export class PDFViewer {
     }
   }
 
-  private updatePageInfo(): void {
-    if (!this.pdf) return
-
-    const pageInfo = this.container.querySelector('#pageInfo')
-    if (pageInfo) {
-      pageInfo.textContent = `Page ${this.currentPage} of ${this.pdf.numPages}`
-    }
-  }
-
-  private async previousPage(): Promise<void> {
-    if (this.currentPage > 1) {
-      await this.renderPage(this.currentPage - 1)
-    }
-  }
-
-  private async nextPage(): Promise<void> {
-    if (this.pdf && this.currentPage < this.pdf.numPages) {
-      await this.renderPage(this.currentPage + 1)
-    }
-  }
-
   private async zoomIn(): Promise<void> {
     this.scale = Math.min(this.scale + 0.25, 3)
-    await this.renderPage(this.currentPage)
+    this.updateZoomLevel()
+    await this.renderAllPages()
   }
 
   private async zoomOut(): Promise<void> {
     this.scale = Math.max(this.scale - 0.25, 0.5)
-    await this.renderPage(this.currentPage)
+    this.updateZoomLevel()
+    await this.renderAllPages()
+  }
+
+  private updateZoomLevel(): void {
+    const zoomLevel = this.container.querySelector('#zoomLevel')
+    if (zoomLevel) {
+      zoomLevel.textContent = `${Math.round(this.scale * 100)}%`
+    }
+  }
+
+  private scrollToPage(pageNum: number): void {
+    const pageContainer = this.container.querySelector(`#page-container-${pageNum}`)
+    if (pageContainer) {
+      pageContainer.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      this.currentPage = pageNum
+    }
+  }
+
+  private updateCurrentPageFromScroll(): void {
+    const pdfCanvasContainer = this.container.querySelector('#pdfCanvasContainer') as HTMLDivElement
+    if (!pdfCanvasContainer) return
+
+    const pageContainers = this.container.querySelectorAll('.pdf-page-container')
+    let visiblePage = 1
+    let maxVisibility = 0
+
+    pageContainers.forEach((container) => {
+      const rect = container.getBoundingClientRect()
+      const containerRect = pdfCanvasContainer.getBoundingClientRect()
+      
+      // Calculate intersection
+      const intersectionTop = Math.max(rect.top, containerRect.top)
+      const intersectionBottom = Math.min(rect.bottom, containerRect.bottom)
+      const height = Math.max(0, intersectionBottom - intersectionTop)
+      
+      if (height > maxVisibility) {
+        maxVisibility = height
+        const pageNum = parseInt(container.getAttribute('data-page-number') || '1')
+        visiblePage = pageNum
+      }
+    })
+    
+    if (this.currentPage !== visiblePage) {
+      this.currentPage = visiblePage
+      const pageInput = this.container.querySelector('#pageInput') as HTMLInputElement
+      if (pageInput && document.activeElement !== pageInput) {
+        pageInput.value = visiblePage.toString()
+      }
+    }
   }
 
   destroy(): void {

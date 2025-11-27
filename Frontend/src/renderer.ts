@@ -127,7 +127,9 @@ function initializeApp() {
   const newChatBtn = document.getElementById('newChatBtn') as HTMLButtonElement | null
   const newMindmapBtn = document.getElementById('newMindmapBtn') as HTMLButtonElement | null
   const newPodcastBtn = document.getElementById('newPodcastBtn') as HTMLButtonElement | null
-  const moreOptionsBtn = document.getElementById('moreOptionsBtn') as HTMLButtonElement | null
+  const newProjectBtn = document.getElementById('newProjectBtn') as HTMLButtonElement | null
+  const saveProjectBtn = document.getElementById('saveProjectBtn') as HTMLButtonElement | null
+  const importProjectBtn = document.getElementById('importProjectBtn') as HTMLButtonElement | null
 
   const tabsContainerEl = document.getElementById('tabsContainer') as HTMLDivElement | null
 
@@ -139,7 +141,7 @@ function initializeApp() {
 
   if (!fileInput || !fileListEl || !chatContainer || !chatInput || !sendButton || 
       !popupModal || !popupTitle || !popupBody || !closePopup || 
-      !newChatBtn || !newMindmapBtn || !newPodcastBtn || !moreOptionsBtn || !tabsContainerEl) {
+      !newChatBtn || !newMindmapBtn || !newPodcastBtn || !newProjectBtn || !saveProjectBtn || !importProjectBtn || !tabsContainerEl) {
     console.error('❌ Renderer: missing expected DOM elements', {
       fileInput: !!fileInput,
       fileListEl: !!fileListEl,
@@ -153,7 +155,9 @@ function initializeApp() {
       newChatBtn: !!newChatBtn,
       newMindmapBtn: !!newMindmapBtn,
       newPodcastBtn: !!newPodcastBtn,
-      moreOptionsBtn: !!moreOptionsBtn,
+      newProjectBtn: !!newProjectBtn,
+      saveProjectBtn: !!saveProjectBtn,
+      importProjectBtn: !!importProjectBtn,
       tabsContainerEl: !!tabsContainerEl
     })
     return
@@ -318,8 +322,7 @@ function initializeApp() {
     createBtn.addEventListener('click', showApp)
   }
 
-  if (importBtn) {
-    importBtn.addEventListener('click', async () => {
+  async function handleImportProject() {
       try {
         const projectData = await window.electronAPI.loadProject()
         if (projectData) {
@@ -381,7 +384,6 @@ function initializeApp() {
                   
                   files.push(entry)
                   restoredFilesForCache.push(file)
-                  addFileToList(entry, files.length - 1)
                 } else {
                   console.warn('File entry missing data:', f.name)
                 }
@@ -389,6 +391,9 @@ function initializeApp() {
                 console.error('Failed to load restored file:', f.name, err)
               }
             }
+            
+            // Use rebuildFileList to render consistent UI once after all files are loaded
+            rebuildFileList()
 
             // Re-index restored files
             if (restoredFilesForCache.length > 0) {
@@ -418,6 +423,72 @@ function initializeApp() {
         console.error('Failed to import project:', error)
         alert('Failed to import project')
       }
+  }
+
+  if (importBtn) {
+    importBtn.addEventListener('click', handleImportProject)
+  }
+
+  if (importProjectBtn) {
+    importProjectBtn.addEventListener('click', handleImportProject)
+  }
+
+  if (newProjectBtn) {
+    newProjectBtn.addEventListener('click', () => {
+      if (confirm('Create a new project? Any unsaved changes will be lost.')) {
+        // Reset App State
+        Object.assign(appState, {
+          cacheKey: null,
+          projectName: 'Untitled Project',
+          isProcessing: false,
+          currentPersona: 'default',
+          currentTask: 'default'
+        })
+
+        // Clear Files
+        files = []
+        rebuildFileList()
+        if (fileInput) fileInput.value = ''
+
+        // Reset Tabs
+        tabs.clear()
+        tabCounter = 1
+        tabs.set('default', {
+          id: 'default',
+          name: 'Chat',
+          icon: 'message-square',
+          type: 'chat',
+          messages: [],
+          platform: null,
+          isTyping: false
+        })
+        activeTabId = 'default'
+        renderTabs()
+
+        // Clear Chat
+        chatMessages = []
+        chatContainerEl.innerHTML = ''
+        
+        // Reset PDF Viewer if open
+        if (currentPDFViewer) {
+          currentPDFViewer.destroy()
+          currentPDFViewer = null
+        }
+        const popupContent = popupModal!.querySelector('.popup-content') as HTMLElement
+        if (popupContent) {
+          popupContent.classList.remove('pdf-viewer')
+        }
+        popupModal!.classList.remove('active')
+        
+        // Reset selected file index
+        selectedFileIndex = null
+      }
+    })
+  }
+
+  if (saveProjectBtn) {
+    saveProjectBtn.addEventListener('click', () => {
+      saveCurrentProject(appState, chatMessages, tabs, files, activeTabId)
     })
   }
 
@@ -443,77 +514,7 @@ function initializeApp() {
 
   let currentPDFViewer: PDFViewer | null = null
 
-  // Add file to UI list
-  function addFileToList(entry: FileEntry, index: number) {
-    const li = document.createElement('li')
-    li.style.cssText = `
-      padding: 10px;
-      border-bottom: 1px solid #2a2a2a;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      cursor: pointer;
-      transition: background 0.2s;
-    `
-    li.innerHTML = `
-      <div style="width: 32px; height: 32px; background: #2a2a2a; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: #ff8c00;">
-        <i data-lucide="file-text" style="width: 18px; height: 18px;"></i>
-      </div>
-      <div style="flex: 1; overflow: hidden;">
-        <div style="font-size: 13px; color: #e0e0e0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${entry.name}</div>
-        <div style="font-size: 11px; color: #666;">PDF Document</div>
-      </div>
-      <button class="delete-btn" style="background: none; border: none; color: #666; cursor: pointer; padding: 4px; display: none;">
-        <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
-      </button>
-    `
-    
-    // Hover effects
-    li.addEventListener('mouseenter', () => {
-      li.style.background = '#2a2a2a'
-      const delBtn = li.querySelector('.delete-btn') as HTMLElement
-      if (delBtn) delBtn.style.display = 'block'
-    })
-    li.addEventListener('mouseleave', () => {
-      li.style.background = 'transparent'
-      const delBtn = li.querySelector('.delete-btn') as HTMLElement
-      if (delBtn) delBtn.style.display = 'none'
-    })
 
-    // Click to open
-    li.addEventListener('click', (e) => {
-      if ((e.target as HTMLElement).closest('.delete-btn')) return
-      openPDFViewer(entry)
-    })
-
-    // Delete button
-    const delBtn = li.querySelector('.delete-btn')
-    if (delBtn) {
-      delBtn.addEventListener('click', async (e) => {
-        e.stopPropagation()
-        if (confirm(`Remove ${entry.name}?`)) {
-          // Remove from backend
-          if (appState.cacheKey) {
-            await removePDF(appState.cacheKey, entry.name)
-          }
-          
-          // Remove from local state
-          files.splice(index, 1)
-          li.remove()
-          
-          // Re-render list to update indices
-          fileListElm.innerHTML = ''
-          files.forEach((f, i) => addFileToList(f, i))
-        }
-      })
-    }
-
-    fileListElm.appendChild(li)
-    
-    if (typeof lucide !== 'undefined') {
-      lucide.createIcons({ root: li, nameAttr: 'data-lucide' })
-    }
-  }
 
   // Tab management functions
   function createNewTab(type: 'chat' | 'mindmap' | 'podcast'): string {
@@ -767,40 +768,11 @@ function initializeApp() {
           </div>
         `
         break
-      case 'more':
-        title = '⚙️ More Options'
-        content = `
-          <div style="display: flex; flex-direction: column; gap: 12px;">
-            <button id="saveProjectBtn" style="background: linear-gradient(135deg, #ff8c00 0%, #ff6b00 100%); border: none; border-radius: 6px; padding: 10px 20px; color: white; font-weight: 600; cursor: pointer; text-align: left; display: flex; align-items: center; gap: 8px;">
-              <i data-lucide="save" style="width: 18px; height: 18px;"></i> Save Project
-            </button>
-            <button style="background: #2a2a2a; border: 1px solid #ff8c00; border-radius: 6px; padding: 10px 20px; color: #ff8c00; font-weight: 600; cursor: pointer; text-align: left;">
-              ⚙️ Settings
-            </button>
-            <button style="background: #2a2a2a; border: 1px solid #ff8c00; border-radius: 6px; padding: 10px 20px; color: #ff8c00; font-weight: 600; cursor: pointer; text-align: left;">
-              📤 Export Data
-            </button>
-            <button style="background: #2a2a2a; border: 1px solid #ff8c00; border-radius: 6px; padding: 10px 20px; color: #ff8c00; font-weight: 600; cursor: pointer; text-align: left;">
-              ℹ️ About GenHat
-            </button>
-          </div>
-        `
-        break
     }
 
     popupTitle!.textContent = title
     popupBody!.innerHTML = content
     popupModal!.classList.add('active')
-
-    // Attach listeners
-    if (platform === 'more') {
-      const saveBtn = document.getElementById('saveProjectBtn')
-      if (saveBtn) {
-        saveBtn.addEventListener('click', () => {
-          saveCurrentProject(appState, chatMessages, tabs, files, activeTabId)
-        })
-      }
-    }
 
     if (typeof lucide !== 'undefined') {
       lucide.createIcons({ root: popupBody, nameAttr: 'data-lucide' })
@@ -2237,9 +2209,7 @@ function initializeApp() {
     addChatMessage('Podcast Mode - I can create or discuss podcast content based on your documents. What would you like to explore?', false)
   })
 
-  moreOptionsBtn.addEventListener('click', () => {
-    showPopup('more')
-  })
+
 
   // Chat input enter key
   chatInputEl.addEventListener('keypress', (e) => {
