@@ -123,15 +123,18 @@ function initializeApp() {
   const popupBody = document.getElementById('popupBody') as HTMLDivElement | null
   const closePopup = document.getElementById('closePopup') as HTMLButtonElement | null
   
-  // Sidebar action buttons
-  const newChatBtn = document.getElementById('newChatBtn') as HTMLButtonElement | null
-  const newMindmapBtn = document.getElementById('newMindmapBtn') as HTMLButtonElement | null
-  const newPodcastBtn = document.getElementById('newPodcastBtn') as HTMLButtonElement | null
+  // Sidebar project buttons
   const newProjectBtn = document.getElementById('newProjectBtn') as HTMLButtonElement | null
   const saveProjectBtn = document.getElementById('saveProjectBtn') as HTMLButtonElement | null
   const importProjectBtn = document.getElementById('importProjectBtn') as HTMLButtonElement | null
 
+  // Tab bar elements
   const tabsContainerEl = document.getElementById('tabsContainer') as HTMLDivElement | null
+  const newTabBtn = document.getElementById('newTabBtn') as HTMLButtonElement | null
+
+  // Type switcher elements
+  const typeSwitcherBtn = document.getElementById('typeSwitcherBtn') as HTMLButtonElement | null
+  const typeSwitcherDropdown = document.getElementById('typeSwitcherDropdown') as HTMLDivElement | null
 
   // Landing Page Elements
   const createBtn = document.getElementById('create-btn') as HTMLButtonElement | null
@@ -141,7 +144,8 @@ function initializeApp() {
 
   if (!fileInput || !fileListEl || !chatContainer || !chatInput || !sendButton || 
       !popupModal || !popupTitle || !popupBody || !closePopup || 
-      !newChatBtn || !newMindmapBtn || !newPodcastBtn || !newProjectBtn || !saveProjectBtn || !importProjectBtn || !tabsContainerEl) {
+      !newProjectBtn || !saveProjectBtn || !importProjectBtn || !tabsContainerEl ||
+      !newTabBtn || !typeSwitcherBtn || !typeSwitcherDropdown) {
     console.error('❌ Renderer: missing expected DOM elements', {
       fileInput: !!fileInput,
       fileListEl: !!fileListEl,
@@ -152,13 +156,13 @@ function initializeApp() {
       popupTitle: !!popupTitle,
       popupBody: !!popupBody,
       closePopup: !!closePopup,
-      newChatBtn: !!newChatBtn,
-      newMindmapBtn: !!newMindmapBtn,
-      newPodcastBtn: !!newPodcastBtn,
       newProjectBtn: !!newProjectBtn,
       saveProjectBtn: !!saveProjectBtn,
       importProjectBtn: !!importProjectBtn,
-      tabsContainerEl: !!tabsContainerEl
+      tabsContainerEl: !!tabsContainerEl,
+      newTabBtn: !!newTabBtn,
+      typeSwitcherBtn: !!typeSwitcherBtn,
+      typeSwitcherDropdown: !!typeSwitcherDropdown
     })
     return
   }
@@ -187,7 +191,7 @@ function initializeApp() {
   }
 
   let tabs: Map<string, ChatTab> = new Map()
-  let activeTabId: string = 'default'
+  let activeTabId: string | null = null  // No active tab initially
   let tabCounter: number = 1
   let draggedTabId: string | null = null
 
@@ -345,10 +349,12 @@ function initializeApp() {
           // Restore Chat Messages (for active tab)
           if (projectData.chatMessages) {
             chatMessages = projectData.chatMessages
-            // If active tab is default, update it
-            const activeTab = tabs.get(activeTabId)
-            if (activeTab) {
-              activeTab.messages = chatMessages
+            // If active tab exists, update it
+            if (activeTabId) {
+              const activeTab = tabs.get(activeTabId)
+              if (activeTab) {
+                activeTab.messages = chatMessages
+              }
             }
             // Re-render chat
             chatContainerEl.innerHTML = ''
@@ -488,20 +494,12 @@ function initializeApp() {
 
   if (saveProjectBtn) {
     saveProjectBtn.addEventListener('click', () => {
-      saveCurrentProject(appState, chatMessages, tabs, files, activeTabId)
+      saveCurrentProject(appState, chatMessages, tabs, files, activeTabId || '')
     })
   }
 
-  // Initialize default tab
-  tabs.set('default', {
-    id: 'default',
-    name: 'Chat',
-    icon: 'message-square',
-    type: 'chat',
-    messages: [],
-    platform: null,
-    isTyping: false
-  })
+  // Initialize with no tabs by default
+  // tabs will be empty until user creates one
   
   // Backend state
   const appState: AppState = {
@@ -538,6 +536,65 @@ function initializeApp() {
     return tabId
   }
 
+  // Switch current tab's type without clearing messages
+  function switchTabType(newType: 'chat' | 'mindmap' | 'podcast') {
+    if (!activeTabId) return
+    
+    const tab = tabs.get(activeTabId)
+    if (!tab) return
+    
+    // Don't switch if already this type
+    if (tab.type === newType) return
+    
+    // Update tab properties
+    tab.type = newType
+    tab.icon = newType === 'chat' ? 'message-square' : newType === 'mindmap' ? 'brain' : 'podcast'
+    tab.platform = newType === 'chat' ? null : (newType as Platform)
+    
+    // Also update the global currentPlatform so sendMessage uses correct endpoint
+    currentPlatform = tab.platform
+    
+    // Update tab name to reflect new type
+    const typeName = newType === 'chat' ? 'Chat' : newType === 'mindmap' ? 'Mind Map' : 'Podcast'
+    const tabNumber = tab.name.match(/\d+$/)
+    tab.name = tabNumber ? `${typeName} ${tabNumber[0]}` : typeName
+    
+    // Add a system message indicating the mode switch
+    const modeMessages: Record<string, string> = {
+      'chat': '💬 Switched to Chat mode',
+      'mindmap': '🧠 Switched to Mind Map mode - Describe the concepts you want to map',
+      'podcast': '🎙️ Switched to Podcast mode - I can create podcast content from your documents'
+    }
+    addChatMessage(modeMessages[newType], false)
+    
+    // Re-render tabs to show updated icon
+    renderTabs()
+    updateTypeSwitcherCheckmarks()
+  }
+
+  // Update checkmarks in type switcher dropdown based on current tab type
+  function updateTypeSwitcherCheckmarks() {
+    if (!activeTabId) return
+    
+    const tab = tabs.get(activeTabId)
+    if (!tab) return
+    
+    const options = document.querySelectorAll('.type-switcher-option')
+    options.forEach(option => {
+      const optionType = option.getAttribute('data-type')
+      if (optionType === tab.type) {
+        option.classList.add('active')
+      } else {
+        option.classList.remove('active')
+      }
+    })
+    
+    // Re-initialize icons in the dropdown
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons({ nameAttr: 'data-lucide' })
+    }
+  }
+
   function reorderTabs(draggedId: string, targetId: string, dropBefore: boolean) {
     if (draggedId === targetId) {
       return
@@ -569,16 +626,18 @@ function initializeApp() {
     if (!tab) return
 
     // Save current tab's messages before switching
-    const currentTab = tabs.get(activeTabId)
-    if (currentTab) {
-      currentTab.messages = chatMessages
-      currentTab.platform = currentPlatform
-      currentTab.isTyping = !!document.getElementById('typingIndicator')
+    if (activeTabId) {
+      const currentTab = tabs.get(activeTabId)
+      if (currentTab) {
+        currentTab.messages = chatMessages
+        currentTab.platform = currentPlatform
+        currentTab.isTyping = !!document.getElementById('typingIndicator')
+      }
     }
 
     // Load new tab
     activeTabId = tabId
-    chatMessages = [...tab.messages] // Create a copy to avoid mutations
+    chatMessages = [...tab.messages] // Load the messages from the tab
     currentPlatform = tab.platform
     
     // Update UI - clear and rebuild chat container
@@ -594,41 +653,202 @@ function initializeApp() {
       }
       chatContainerEl.appendChild(welcome)
     } else {
-      // Rebuild messages for this tab
-      const tempMessages = chatMessages
-      chatMessages = []
-      tempMessages.forEach(msg => {
-        addChatMessage(msg.text, msg.isUser, msg.branchFrom)
+      // Render existing messages directly without re-adding them
+      chatMessages.forEach(msg => {
+        // Render message to UI directly
+        const messageWrapper = document.createElement('div')
+        messageWrapper.className = `message-item-wrapper ${msg.isUser ? 'user' : ''}`
+        messageWrapper.setAttribute('data-message-id', msg.id || '')
+
+        const bubble = document.createElement('div')
+        bubble.className = `message-bubble ${msg.isUser ? 'user' : ''}`
+        
+        if (!msg.isUser) {
+          bubble.innerHTML = parseMarkdown(msg.text)
+        } else {
+          bubble.textContent = msg.text
+        }
+
+        // Create buttons container
+        const buttonsContainer = document.createElement('div')
+        buttonsContainer.className = 'message-buttons-container'
+
+        // Add copy button
+        const copyBtn = document.createElement('button')
+        copyBtn.className = 'message-copy-btn'
+        copyBtn.innerHTML = `<i data-lucide="copy" style="width: 16px, height: 16px;"></i>`
+        copyBtn.title = 'Copy message'
+        copyBtn.addEventListener('click', async (e) => {
+          e.stopPropagation()
+          try {
+            await navigator.clipboard.writeText(msg.text)
+            const toast = document.createElement('div')
+            toast.className = 'copy-toast'
+            toast.textContent = 'Copied!'
+            document.body.appendChild(toast)
+            setTimeout(() => {
+              toast.classList.add('hide')
+              setTimeout(() => toast.remove(), 300)
+            }, 2000)
+          } catch (err) {
+            console.error('Failed to copy:', err)
+          }
+        })
+        buttonsContainer.appendChild(copyBtn)
+
+        messageWrapper.appendChild(bubble)
+        messageWrapper.appendChild(buttonsContainer)
+        chatContainerEl.appendChild(messageWrapper)
       })
       
       // Restore typing indicator if it was active
       if (tab.isTyping) {
         showTypingIndicator()
       }
+      
+      // Update icons
+      if (typeof lucide !== 'undefined') {
+        lucide.createIcons({ nameAttr: 'data-lucide' })
+      }
     }
 
     renderTabs()
+    updateTypeSwitcherCheckmarks()
   }
 
   function closeTab(tabId: string) {
     if (tabs.size <= 1) return // Keep at least one tab
     
+    const tabsArray = Array.from(tabs.entries())
+    const closingTabIndex = tabsArray.findIndex(([id]) => id === tabId)
+    
+    // Remove the tab
     tabs.delete(tabId)
     
     if (activeTabId === tabId) {
-      // Switch to first remaining tab
-      const remainingTabs = Array.from(tabs.keys())
-      activeTabId = remainingTabs[0] || 'default'
-      switchToTab(activeTabId)
+      // Deleting the active tab - need to switch to another
+      let nextTabId: string | null = null
+      
+      // Try to switch to left tab (previous in list)
+      if (closingTabIndex > 0) {
+        nextTabId = tabsArray[closingTabIndex - 1][0]
+      } 
+      // If no left tab, try right tab (next in list)
+      else if (closingTabIndex < tabsArray.length - 1) {
+        nextTabId = tabsArray[closingTabIndex + 1][0]
+      }
+      
+      if (nextTabId) {
+        // Switch to the new active tab WITHOUT saving the deleted tab's messages
+        const newTab = tabs.get(nextTabId)
+        if (newTab) {
+          activeTabId = nextTabId
+          chatMessages = [...newTab.messages] // Load messages from new tab
+          currentPlatform = newTab.platform
+          
+          // Update UI
+          chatContainerEl.innerHTML = ''
+          if (chatMessages.length === 0 && !newTab.isTyping) {
+            const welcome = document.createElement('div')
+            welcome.style.cssText = 'text-align: center; color: #666; margin-top: 20px;'
+            const iconName = newTab.type === 'mindmap' ? 'brain' : newTab.type === 'podcast' ? 'podcast' : 'message-square'
+            welcome.innerHTML = `<div style="margin-bottom: 12px;"><i data-lucide="${iconName}" style="width: 48px; height: 48px; color: #ff8c00;"></i></div><p style="font-size: 16px;">Start a conversation...</p>`
+            if (typeof lucide !== 'undefined') {
+              lucide.createIcons({ nameAttr: 'data-lucide' })
+            }
+            chatContainerEl.appendChild(welcome)
+          } else {
+            // Render messages from the new active tab
+            chatMessages.forEach(msg => {
+              const messageWrapper = document.createElement('div')
+              messageWrapper.className = `message-item-wrapper ${msg.isUser ? 'user' : ''}`
+              messageWrapper.setAttribute('data-message-id', msg.id || '')
+
+              const bubble = document.createElement('div')
+              bubble.className = `message-bubble ${msg.isUser ? 'user' : ''}`
+              
+              if (!msg.isUser) {
+                bubble.innerHTML = parseMarkdown(msg.text)
+              } else {
+                bubble.textContent = msg.text
+              }
+
+              const buttonsContainer = document.createElement('div')
+              buttonsContainer.className = 'message-buttons-container'
+
+              const copyBtn = document.createElement('button')
+              copyBtn.className = 'message-copy-btn'
+              copyBtn.innerHTML = `<i data-lucide="copy" style="width: 16px, height: 16px;"></i>`
+              copyBtn.title = 'Copy message'
+              copyBtn.addEventListener('click', async (e) => {
+                e.stopPropagation()
+                try {
+                  await navigator.clipboard.writeText(msg.text)
+                  const toast = document.createElement('div')
+                  toast.className = 'copy-toast'
+                  toast.textContent = 'Copied!'
+                  document.body.appendChild(toast)
+                  setTimeout(() => {
+                    toast.classList.add('hide')
+                    setTimeout(() => toast.remove(), 300)
+                  }, 2000)
+                } catch (err) {
+                  console.error('Failed to copy:', err)
+                }
+              })
+              buttonsContainer.appendChild(copyBtn)
+
+              messageWrapper.appendChild(bubble)
+              messageWrapper.appendChild(buttonsContainer)
+              chatContainerEl.appendChild(messageWrapper)
+            })
+            
+            if (newTab.isTyping) {
+              showTypingIndicator()
+            }
+            
+            if (typeof lucide !== 'undefined') {
+              lucide.createIcons({ nameAttr: 'data-lucide' })
+            }
+          }
+          
+          renderTabs()
+        }
+      } else {
+        // No more tabs, show empty state
+        chatMessages = []
+        activeTabId = null
+        chatContainerEl.innerHTML = ''
+        renderTabs()
+      }
     } else {
+      // Deleting a non-active tab - just remove it from UI
       renderTabs()
     }
   }
 
   function renderTabs() {
     if (!tabsContainerEl) return
+    
     // Clear existing tabs
     tabsContainerEl.innerHTML = ''
+    
+    // If no tabs, show empty state
+    if (tabs.size === 0) {
+      chatContainerEl.innerHTML = ''
+      const welcome = document.createElement('div')
+      welcome.style.cssText = 'text-align: center; color: #666; margin-top: 40px;'
+      welcome.innerHTML = `
+        <div style="margin-bottom: 20px;"><i data-lucide="message-square" style="width: 64px; height: 64px; color: #ff8c00;"></i></div>
+        <p style="font-size: 18px; margin-bottom: 10px;">No chats yet</p>
+        <p style="font-size: 14px; color: #888;">Create a new tab to get started</p>
+      `
+      if (typeof lucide !== 'undefined') {
+        lucide.createIcons({ nameAttr: 'data-lucide' })
+      }
+      chatContainerEl.appendChild(welcome)
+      return
+    }
 
     // Create each tab element
     for (const tab of tabs.values()) {
@@ -1409,6 +1629,18 @@ function initializeApp() {
 
   // Add message to chat
   function addChatMessage(text: string, isUser: boolean, branchFrom?: string, skipStateUpdate: boolean = false) {
+    // Don't add messages if no active tab
+    if (!activeTabId) {
+      console.error('No active tab to add message to')
+      return
+    }
+
+    const activeTab = tabs.get(activeTabId)
+    if (!activeTab) {
+      console.error('Active tab not found')
+      return
+    }
+
     const messageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
     const message: ChatMessage = {
       text,
@@ -1418,7 +1650,10 @@ function initializeApp() {
       branchFrom
     }
     
+    // Add message to active tab's messages array
     if (!skipStateUpdate) {
+      activeTab.messages.push(message)
+      // Also update the global chatMessages to keep in sync for now
       chatMessages.push(message)
     }
 
@@ -1620,6 +1855,14 @@ function initializeApp() {
       // Update the edited message text in the data store only
       chatMessages = chatMessages.slice(0, messageIndex + 1)
       chatMessages[messageIndex].text = newText
+      
+      // Also update in the active tab
+      if (activeTabId) {
+        const activeTab = tabs.get(activeTabId)
+        if (activeTab) {
+          activeTab.messages = [...chatMessages]
+        }
+      }
 
       // Remove DOM elements after the edited message without clearing previous ones
       const allMessages = chatContainerEl.querySelectorAll('[data-message-id]')
@@ -1680,9 +1923,11 @@ function initializeApp() {
     chatContainerEl.scrollTop = chatContainerEl.scrollHeight
     
     // Set isTyping state for current tab
-    const tab = tabs.get(activeTabId)
-    if (tab) {
-      tab.isTyping = true
+    if (activeTabId) {
+      const tab = tabs.get(activeTabId)
+      if (tab) {
+        tab.isTyping = true
+      }
     }
   }
 
@@ -1694,9 +1939,11 @@ function initializeApp() {
     }
     
     // Clear isTyping state for current tab
-    const tab = tabs.get(activeTabId)
-    if (tab) {
-      tab.isTyping = false
+    if (activeTabId) {
+      const tab = tabs.get(activeTabId)
+      if (tab) {
+        tab.isTyping = false
+      }
     }
   }
 
@@ -2193,23 +2440,37 @@ function initializeApp() {
   // Chat send button
   sendButton!.addEventListener('click', sendMessage)
 
-  // Sidebar action buttons
-  newChatBtn!.addEventListener('click', () => {
+  // New Tab button in tab bar - creates a new Chat tab by default
+  newTabBtn!.addEventListener('click', () => {
     const tabId = createNewTab('chat')
     addChatMessage('Start a new conversation...', false)
   })
 
-  newMindmapBtn!.addEventListener('click', () => {
-    const tabId = createNewTab('mindmap')
-    addChatMessage('Mind Map Mode - Describe the concepts you want to map, and I\'ll create a visual mind map from your documents.', false)
+  // Type Switcher - toggle dropdown
+  typeSwitcherBtn!.addEventListener('click', (e) => {
+    e.stopPropagation()
+    typeSwitcherDropdown!.classList.toggle('show')
+    updateTypeSwitcherCheckmarks()
   })
 
-  newPodcastBtn!.addEventListener('click', () => {
-    const tabId = createNewTab('podcast')
-    addChatMessage('Podcast Mode - I can create or discuss podcast content based on your documents. What would you like to explore?', false)
+  // Close dropdown when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!typeSwitcherDropdown!.contains(e.target as Node) && e.target !== typeSwitcherBtn) {
+      typeSwitcherDropdown!.classList.remove('show')
+    }
   })
 
-
+  // Type Switcher options - switch current tab's type
+  const typeSwitcherOptions = typeSwitcherDropdown!.querySelectorAll('.type-switcher-option')
+  typeSwitcherOptions.forEach(option => {
+    option.addEventListener('click', () => {
+      const newType = option.getAttribute('data-type') as 'chat' | 'mindmap' | 'podcast'
+      if (newType && activeTabId) {
+        switchTabType(newType)
+        typeSwitcherDropdown!.classList.remove('show')
+      }
+    })
+  })
 
   // Chat input enter key
   chatInputEl.addEventListener('keypress', (e) => {
