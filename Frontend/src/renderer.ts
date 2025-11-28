@@ -6,7 +6,9 @@ import {
   waitForCacheReadyWithProgress,
   analyzeChunksWithGemini,
   removePDF,
-  podcastFromPrompt
+  podcastFromPrompt,
+  exportProjectCache,
+  importProjectCache
 } from './api.js'
 
 import { PDFViewer } from './pdfViewer.js'
@@ -83,21 +85,42 @@ async function saveCurrentProject(appState: AppState, chatMessages: ChatMessage[
     data: await blobToBase64(f.file)
   })))
 
+  // Export backend cache (embeddings, chunks, prompt cache) if project has been indexed
+  let backendCache = null
+  if (appState.projectName && files.length > 0) {
+    try {
+      console.log('[Renderer] Exporting backend cache for project:', appState.projectName)
+      backendCache = await exportProjectCache(appState.projectName)
+      console.log('[Renderer] Backend cache exported:', {
+        chunks: backendCache.chunks?.length || 0,
+        embeddings: backendCache.embeddings ? 'present' : 'none',
+        promptCache: backendCache.prompt_cache?.length || 0
+      })
+    } catch (err) {
+      console.warn('[Renderer] Failed to export backend cache (project may not be indexed yet):', err)
+      // Continue saving without backend cache - it will be recomputed on import
+    }
+  }
+
   const projectState = {
-    version: '1.0',
+    version: '1.1', // Bumped version for new format with cache
     projectName: appState.projectName,
     lastModified: new Date().toISOString(),
     appState,
     chatMessages, // Current active chat
     tabs: Array.from(tabs.entries()),
     files: filesWithData,
-    activeTabId // Save which tab was active
+    activeTabId, // Save which tab was active
+    backendCache // Include embeddings, chunks, and prompt cache
   }
   
   try {
     const success = await window.electronAPI.saveProject(projectState)
     if (success) {
-      alert(`Project saved successfully!\nEmbedded ${files.length} PDF(s) into the .genhat file.`)
+      const cacheInfo = backendCache 
+        ? `\nIncluded: ${backendCache.chunks?.length || 0} indexed chunks, ${backendCache.prompt_cache?.length || 0} cached prompts`
+        : '\n(No cache data - will recompute on import)'
+      alert(`Project saved successfully!\nEmbedded ${files.length} PDF(s) into the .genhat file.${cacheInfo}`)
     }
   } catch (error) {
     console.error('Failed to save project:', error)
@@ -401,25 +424,44 @@ function initializeApp() {
             // Use rebuildFileList to render consistent UI once after all files are loaded
             rebuildFileList()
 
-            // Re-index restored files
-            if (restoredFilesForCache.length > 0) {
+            // Check if we have backend cache (embeddings, chunks, prompt cache) from v1.1+ files
+            if (projectData.backendCache && projectData.backendCache.chunks && projectData.backendCache.chunks.length > 0) {
               try {
-                console.log('[Renderer] Re-indexing restored files...')
-                // Clear old cache key to force fresh session/check
-                appState.cacheKey = null 
-                
-                const cacheResponse = await cachePDFs(restoredFilesForCache, appState.projectName)
-                appState.cacheKey = cacheResponse.cache_key
-                console.log('[Renderer] Re-indexing complete. New cache key:', appState.cacheKey)
-                
-                // Wait for processing if needed
-                await waitForCacheReadyWithProgress(appState.cacheKey, (status) => {
-                   console.log('[Renderer] Indexing progress:', status)
+                console.log('[Renderer] Importing backend cache (no recomputation needed)...')
+                console.log('[Renderer] Cache contains:', {
+                  chunks: projectData.backendCache.chunks?.length || 0,
+                  embeddings: projectData.backendCache.embeddings ? 'present' : 'none',
+                  promptCache: projectData.backendCache.prompt_cache?.length || 0
                 })
+                
+                // Import the cache to backend
+                const importResponse = await importProjectCache({
+                  project_name: appState.projectName,
+                  meta: projectData.backendCache.meta,
+                  chunks: projectData.backendCache.chunks,
+                  embeddings: projectData.backendCache.embeddings,
+                  prompt_cache: projectData.backendCache.prompt_cache
+                })
+                
+                appState.cacheKey = importResponse.cache_key
+                console.log('[Renderer] Backend cache imported successfully:', importResponse)
+                
+                if (importResponse.embeddings_restored) {
+                  console.log('[Renderer] ✅ Embeddings restored - no recomputation needed!')
+                } else {
+                  console.log('[Renderer] ⚠️ Embeddings not restored, may need recomputation')
+                }
+                
               } catch (err) {
-                console.error('Failed to re-index restored files:', err)
-                addChatMessage('⚠️ Restored files loaded, but AI indexing failed. Some features may be unavailable.', false)
+                console.error('[Renderer] Failed to import backend cache, falling back to re-indexing:', err)
+                // Fallback to re-indexing
+                await reindexFiles(restoredFilesForCache)
               }
+            } else if (restoredFilesForCache.length > 0) {
+              // No backend cache available (v1.0 file or cache export failed during save)
+              // Fall back to re-indexing
+              console.log('[Renderer] No backend cache found, re-indexing restored files...')
+              await reindexFiles(restoredFilesForCache)
             }
           }
 
@@ -429,6 +471,26 @@ function initializeApp() {
         console.error('Failed to import project:', error)
         alert('Failed to import project')
       }
+  }
+
+  // Helper function to re-index files (fallback when no cache is available)
+  async function reindexFiles(filesToIndex: File[]) {
+    try {
+      console.log('[Renderer] Re-indexing files...')
+      appState.cacheKey = null 
+      
+      const cacheResponse = await cachePDFs(filesToIndex, appState.projectName)
+      appState.cacheKey = cacheResponse.cache_key
+      console.log('[Renderer] Re-indexing complete. New cache key:', appState.cacheKey)
+      
+      // Wait for processing if needed
+      await waitForCacheReadyWithProgress(appState.cacheKey, (status) => {
+         console.log('[Renderer] Indexing progress:', status)
+      })
+    } catch (err) {
+      console.error('Failed to re-index restored files:', err)
+      addChatMessage('⚠️ Restored files loaded, but AI indexing failed. Some features may be unavailable.', false)
+    }
   }
 
   if (importBtn) {

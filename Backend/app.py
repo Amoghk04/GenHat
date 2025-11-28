@@ -816,6 +816,178 @@ async def get_project_cache(project_name: str):
         "domain": meta.get("domain", "general")
     }
 
+@app.get("/export-project-cache/{project_name}")
+async def export_project_cache(project_name: str):
+    """
+    Export project cache including embeddings, chunks, meta, and prompt cache.
+    This allows saving the full state to a .genhat file for later import without recomputation.
+    """
+    try:
+        safe_name = _safe_project_name(project_name)
+        meta = load_project_meta(safe_name)
+        if not meta:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        chunks = load_project_chunks(safe_name)
+        
+        # Load embeddings if available
+        embeddings_data = None
+        loaded = load_embeddings(BASE_DATA_DIR, safe_name)
+        if loaded:
+            chunk_ids, emb_array, model_name = loaded
+            # Convert numpy array to list for JSON serialization
+            embeddings_data = {
+                "chunk_ids": chunk_ids,
+                "embeddings": emb_array.tolist(),
+                "model_name": model_name
+            }
+            logger.info(f"📦 Exporting {len(chunk_ids)} embeddings for project '{safe_name}'")
+        
+        # Get relevant prompt cache entries for this project
+        prompt_cache_entries = []
+        for prompt_hash, entry in prompt_cache.cache_data.items():
+            context = entry.get('context', {})
+            # Include entries that belong to this project
+            if context.get('project_name') == safe_name or context.get('project') == safe_name:
+                prompt_cache_entries.append({
+                    'hash': prompt_hash,
+                    'prompt': entry.get('prompt', ''),
+                    'response': entry.get('response', ''),
+                    'context': context,
+                    'metadata': entry.get('metadata', {}),
+                    'created_at': entry.get('created_at', '')
+                })
+        
+        logger.info(f"📦 Exporting {len(prompt_cache_entries)} cached prompts for project '{safe_name}'")
+        
+        return {
+            "project_name": safe_name,
+            "meta": meta,
+            "chunks": chunks,
+            "embeddings": embeddings_data,
+            "prompt_cache": prompt_cache_entries,
+            "export_timestamp": datetime.now(timezone.utc).isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error exporting project cache: {e}")
+        raise HTTPException(status_code=500, detail=f"Error exporting project cache: {e}")
+
+
+class ImportProjectCacheRequest(BaseModel):
+    project_name: str
+    meta: Dict[str, Any]
+    chunks: List[Dict[str, Any]]
+    embeddings: Optional[Dict[str, Any]] = None
+    prompt_cache: Optional[List[Dict[str, Any]]] = None
+
+
+@app.post("/import-project-cache")
+async def import_project_cache(request: ImportProjectCacheRequest):
+    """
+    Import project cache including embeddings, chunks, meta, and prompt cache.
+    This restores the full state from a .genhat file without requiring recomputation.
+    """
+    try:
+        safe_name = _safe_project_name(request.project_name)
+        
+        # Save project state (meta + chunks)
+        save_project_state(safe_name, request.meta, request.chunks)
+        logger.info(f"📥 Imported meta and {len(request.chunks)} chunks for project '{safe_name}'")
+        
+        # Restore embeddings if provided
+        if request.embeddings:
+            try:
+                chunk_ids = request.embeddings.get("chunk_ids", [])
+                embeddings_list = request.embeddings.get("embeddings", [])
+                model_name = request.embeddings.get("model_name", "all-MiniLM-L12-v2")
+                
+                if chunk_ids and embeddings_list:
+                    # Convert list back to numpy array
+                    emb_array = np.array(embeddings_list, dtype=np.float32)
+                    save_embeddings(BASE_DATA_DIR, safe_name, chunk_ids, emb_array, model_name)
+                    logger.info(f"📥 Imported {len(chunk_ids)} embeddings for project '{safe_name}'")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to import embeddings: {e}")
+        
+        # Restore prompt cache entries if provided
+        if request.prompt_cache:
+            try:
+                for entry in request.prompt_cache:
+                    prompt_hash = entry.get('hash')
+                    if prompt_hash:
+                        prompt_cache.cache_data[prompt_hash] = {
+                            'prompt': entry.get('prompt', ''),
+                            'response': entry.get('response', ''),
+                            'context': entry.get('context', {}),
+                            'metadata': entry.get('metadata', {}),
+                            'created_at': entry.get('created_at', datetime.now().isoformat()),
+                            'access_count': 0,
+                            'last_accessed': None
+                        }
+                prompt_cache._save_cache()
+                logger.info(f"📥 Imported {len(request.prompt_cache)} prompt cache entries for project '{safe_name}'")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to import prompt cache: {e}")
+        
+        # Build retriever and store in pdf_cache for immediate use
+        cache_key = str(uuid.uuid4())
+        detected_domain = request.meta.get("domain", "general")
+        
+        try:
+            # Try to use imported embeddings
+            loaded = load_embeddings(BASE_DATA_DIR, safe_name)
+            if loaded:
+                chunk_ids_loaded, emb_array, model_name = loaded
+                id_map = {c.get('chunk_id'): c for c in request.chunks if c.get('chunk_id')}
+                ordered_chunks = [id_map[cid] for cid in chunk_ids_loaded if cid in id_map]
+                if len(ordered_chunks) == emb_array.shape[0]:
+                    retriever = build_hybrid_index(
+                        ordered_chunks, 
+                        domain=detected_domain, 
+                        embedding_model=model_name, 
+                        precomputed_embeddings=emb_array
+                    )
+                    logger.info(f"✅ Built retriever using imported embeddings for '{safe_name}'")
+                else:
+                    retriever = build_hybrid_index(request.chunks, domain=detected_domain)
+                    logger.info(f"⚠️ Embedding count mismatch, rebuilt index for '{safe_name}'")
+            else:
+                retriever = build_hybrid_index(request.chunks, domain=detected_domain)
+                logger.info(f"ℹ️ No embeddings found, built fresh index for '{safe_name}'")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to build retriever: {e}")
+            retriever = None
+        
+        pdf_cache[cache_key] = {
+            "retriever": retriever,
+            "chunks": request.chunks,
+            "domain": detected_domain,
+            "pdf_files": [f.get("name") for f in request.meta.get("files", [])],
+            "project_name": safe_name,
+            "imported": True
+        }
+        
+        return {
+            "cache_key": cache_key,
+            "project_name": safe_name,
+            "message": "Project cache imported successfully",
+            "chunk_count": len(request.chunks),
+            "embeddings_restored": request.embeddings is not None,
+            "prompt_cache_restored": len(request.prompt_cache) if request.prompt_cache else 0
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error importing project cache: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error importing project cache: {e}")
+
+
 @app.get("/cache-status/{cache_key}")
 async def get_cache_status(cache_key: str):
     """

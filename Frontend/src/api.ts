@@ -297,3 +297,84 @@ export async function removePDF(
 
   return response.json()
 }
+
+/**
+ * Export project cache (embeddings, chunks, meta, prompt cache)
+ */
+export interface ExportProjectCacheResponse {
+  project_name: string
+  meta: Record<string, any>
+  chunks: Array<Record<string, any>>
+  embeddings: {
+    chunk_ids: string[]
+    embeddings: number[][]
+    model_name: string
+  } | null
+  prompt_cache: Array<{
+    hash: string
+    prompt: string
+    response: string
+    context: Record<string, any>
+    metadata: Record<string, any>
+    created_at: string
+  }>
+  export_timestamp: string
+}
+
+export async function exportProjectCache(projectName: string): Promise<ExportProjectCacheResponse> {
+  const response = await fetch(`${BACKEND_URL}/export-project-cache/${encodeURIComponent(projectName)}`)
+
+  if (!response.ok) {
+    const error = await response.text()
+    throw new Error(`Failed to export project cache: ${error}`)
+  }
+
+  return response.json()
+}
+
+/**
+ * Import project cache (embeddings, chunks, meta, prompt cache)
+ */
+export interface ImportProjectCacheRequest {
+  project_name: string
+  meta: Record<string, any>
+  chunks: Array<Record<string, any>>
+  embeddings?: {
+    chunk_ids: string[]
+    embeddings: number[][]
+    model_name: string
+  } | null
+  prompt_cache?: Array<{
+    hash: string
+    prompt: string
+    response: string
+    context: Record<string, any>
+    metadata: Record<string, any>
+    created_at: string
+  }>
+}
+
+export interface ImportProjectCacheResponse {
+  cache_key: string
+  project_name: string
+  message: string
+  chunk_count: number
+  embeddings_restored: boolean
+  prompt_cache_restored: number
+}
+
+export async function importProjectCache(data: ImportProjectCacheRequest): Promise<ImportProjectCacheResponse> {
+  const response = await fetch(`${BACKEND_URL}/import-project-cache`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  })
+
+  if (!response.ok) {
+    const error = await response.text()
+    throw new Error(`Failed to import project cache: ${error}`)
+  }
+
+  return response.json()
+}
+
