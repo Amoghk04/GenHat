@@ -219,8 +219,9 @@ function generateMindmapHTML(treeData: MindmapNode, title: string): string {
       backdrop-filter: blur(8px);
     }
     .mindmap-node:hover { border-color: #ff8c00; box-shadow: 0 4px 16px rgba(255, 140, 0, 0.3); }
-    .mindmap-node.selected { border-color: #ff8c00; box-shadow: 0 0 0 2px rgba(255, 140, 0, 0.4); }
+    .mindmap-node.selected { border-color: #00bfff !important; box-shadow: 0 0 0 3px rgba(0, 191, 255, 0.5), 0 4px 20px rgba(0, 191, 255, 0.4) !important; background: rgba(0, 191, 255, 0.1) !important; }
     .mindmap-node.root { background: linear-gradient(135deg, rgba(255, 140, 0, 0.2) 0%, rgba(255, 107, 0, 0.15) 100%); border-color: #ff8c00; }
+    .mindmap-node.root.selected { background: linear-gradient(135deg, rgba(0, 191, 255, 0.2) 0%, rgba(0, 150, 200, 0.15) 100%) !important; border-color: #00bfff !important; }
     
     .mindmap-node .node-content { flex: 1; min-width: 0; }
     .mindmap-node .node-label { color: #e0e0e0; font-size: 13px; font-weight: 500; word-wrap: break-word; display: block; }
@@ -331,39 +332,22 @@ function generateMindmapHTML(treeData: MindmapNode, title: string): string {
   
   <script>
     (function() {
-      const { useState, useCallback, useEffect, useRef, useMemo } = React;
+      const { useState, useCallback, useEffect, useRef } = React;
       const RF = window.ReactFlow;
       const { ReactFlow, Controls, Background, useNodesState, useEdgesState, ReactFlowProvider, useReactFlow, Handle, Position } = RF;
 
-      const NODE_MIN_WIDTH = 160;
-      const NODE_MAX_WIDTH = 320;
-      const NODE_CHAR_WIDTH = 7.5;
-      const NODE_BASE_HEIGHT = 56;
-
       function generateId() {
         return 'n' + Math.random().toString(36).slice(2, 9);
-      }
-
-      function estimateNodeSize(label = '', isRoot = false) {
-        const text = label || (isRoot ? 'Mind Map' : 'Untitled');
-        const width = Math.min(
-          NODE_MAX_WIDTH,
-          Math.max(NODE_MIN_WIDTH, text.length * NODE_CHAR_WIDTH + (isRoot ? 80 : 48))
-        );
-        const lines = Math.max(1, Math.ceil(text.length / 24));
-        const height = NODE_BASE_HEIGHT + lines * 18;
-        return { width, height };
       }
 
       // Dagre layout function
       function getLayoutedElements(nodes, edges) {
         const g = new dagre.graphlib.Graph();
         g.setDefaultEdgeLabel(() => ({}));
-        g.setGraph({ rankdir: 'LR', nodesep: 80, ranksep: 140, marginx: 50, marginy: 50 });
+        g.setGraph({ rankdir: 'LR', nodesep: 60, ranksep: 120, marginx: 50, marginy: 50 });
 
         nodes.forEach(node => {
-          const dims = estimateNodeSize(node.data.label, node.data.isRoot);
-          g.setNode(node.id, { width: dims.width, height: dims.height });
+          g.setNode(node.id, { width: 180, height: 50 });
         });
 
         edges.forEach(edge => {
@@ -373,16 +357,13 @@ function generateMindmapHTML(treeData: MindmapNode, title: string): string {
         dagre.layout(g);
 
         const layoutedNodes = nodes.map(node => {
-          const dims = estimateNodeSize(node.data.label, node.data.isRoot);
           const nodeWithPosition = g.node(node.id);
           return {
             ...node,
             position: {
-              x: nodeWithPosition.x - dims.width / 2,
-              y: nodeWithPosition.y - dims.height / 2
-            },
-            targetPosition: Position.Left,
-            sourcePosition: Position.Right
+              x: nodeWithPosition.x - 90,
+              y: nodeWithPosition.y - 25
+            }
           };
         });
 
@@ -391,112 +372,37 @@ function generateMindmapHTML(treeData: MindmapNode, title: string): string {
       
       // Custom node component
       function MindMapNode({ data, id, selected }) {
-        const [isEditing, setIsEditing] = useState(false);
         const [labelText, setLabelText] = useState(data.label);
         const inputRef = useRef(null);
         
-        useEffect(() => {
-          setLabelText(data.label);
-        }, [data.label]);
+        useEffect(() => { setLabelText(data.label); }, [data.label]);
         
-        useEffect(() => {
-          if (isEditing && inputRef.current) {
-            inputRef.current.focus();
-            inputRef.current.select();
-          }
-        }, [isEditing]);
+        const handleDoubleClick = (e) => { e.stopPropagation(); };
+        const finishEditing = () => { setIsEditing(false); if (labelText !== data.label && data.onLabelChange) data.onLabelChange(id, labelText); };
+        const handleKeyDown = (e) => { if (e.key === 'Enter') finishEditing(); if (e.key === 'Escape') { setLabelText(data.label); setIsEditing(false); } };
+        const handleAddChild = (e) => { e.stopPropagation(); if (data.onAddChild) data.onAddChild(id); };
+        const handleDelete = (e) => { e.stopPropagation(); if (data.onDelete) data.onDelete(id); };
+        const handleToggleCollapse = (e) => { e.stopPropagation(); if (data.onToggleCollapse) data.onToggleCollapse(id); };
         
-        const handleDoubleClick = (e) => {
+        const isEditSelected = data.editMode && data.selected;
+        const nodeClass = 'mindmap-node' + (data.isRoot ? ' root' : '') + (selected ? ' selected' : '') + (isEditSelected ? ' edit-selected' : '');
+        const handleSelectClick = (e) => {
+          if (!data.editMode) return;
           e.stopPropagation();
-          setIsEditing(true);
+          data.onToggleSelect?.(id);
         };
-        
-        const finishEditing = () => {
-          setIsEditing(false);
-          if (labelText !== data.label && data.onLabelChange) {
-            data.onLabelChange(id, labelText);
-          }
-        };
-        
-        const handleKeyDown = (e) => {
-          if (e.key === 'Enter') finishEditing();
-          if (e.key === 'Escape') {
-            setLabelText(data.label);
-            setIsEditing(false);
-          }
-        };
-        
-        const handleAddChild = (e) => {
-          e.stopPropagation();
-          if (data.onAddChild) data.onAddChild(id);
-        };
-        
-        const handleDelete = (e) => {
-          e.stopPropagation();
-          if (data.onDelete) data.onDelete(id);
-        };
-        
-        const handleToggleCollapse = (e) => {
-          e.stopPropagation();
-          if (data.onToggleCollapse) data.onToggleCollapse(id);
-        };
-        
-        const nodeClass = 'mindmap-node' + (data.isRoot ? ' root' : '') + (selected ? ' selected' : '');
-        
-        return React.createElement('div', { className: nodeClass },
-          // Left handle (target) - not on root
-          !data.isRoot && React.createElement(Handle, {
-            type: 'target',
-            position: Position.Left,
-            id: 'target'
-          }),
-          
-          // Content
+
+        return React.createElement('div', { className: nodeClass, onClick: handleSelectClick },
+          !data.isRoot && React.createElement(Handle, { type: 'target', position: Position.Left, id: 'target' }),
           React.createElement('div', { className: 'node-content' },
-            isEditing
-              ? React.createElement('input', {
-                  ref: inputRef,
-                  type: 'text',
-                  className: 'node-input',
-                  value: labelText,
-                  onChange: e => setLabelText(e.target.value),
-                  onBlur: finishEditing,
-                  onKeyDown: handleKeyDown
-                })
-              : React.createElement('span', {
-                  className: 'node-label',
-                  onDoubleClick: handleDoubleClick
-                }, labelText)
+            React.createElement('span', { className: 'node-label', onDoubleClick: handleDoubleClick }, labelText)
           ),
-          
-          // Action buttons
           React.createElement('div', { className: 'node-actions' },
-            React.createElement('button', {
-              className: 'action-btn',
-              onClick: handleAddChild,
-              title: 'Add child'
-            }, '+'),
-            !data.isRoot && React.createElement('button', {
-              className: 'action-btn',
-              onClick: handleDelete,
-              title: 'Delete'
-            }, '×')
+            React.createElement('button', { className: 'action-btn', onClick: handleAddChild, title: 'Add child' }, '+'),
+            !data.isRoot && React.createElement('button', { className: 'action-btn', onClick: handleDelete, title: 'Delete' }, '×')
           ),
-          
-          // Collapse indicator (only if has children)
-          data.hasChildren && React.createElement('button', {
-            className: 'collapse-indicator',
-            type: 'button',
-            onClick: handleToggleCollapse,
-            title: data.collapsed ? 'Expand' : 'Collapse'
-          }, data.collapsed ? '+' : '−'),
-          
-          // Right handle (source)
-          React.createElement(Handle, {
-            type: 'source',
-            position: Position.Right,
-            id: 'source'
-          })
+          data.hasChildren && React.createElement('button', { className: 'collapse-indicator', type: 'button', onClick: handleToggleCollapse, title: data.collapsed ? 'Expand' : 'Collapse' }, data.collapsed ? '+' : '−'),
+          React.createElement(Handle, { type: 'source', position: Position.Right, id: 'source' })
         );
       }
       
@@ -504,12 +410,7 @@ function generateMindmapHTML(treeData: MindmapNode, title: string): string {
 
       function normalizeTree(node, isRoot = true) {
         if (!node || typeof node !== 'object') {
-          return {
-            id: isRoot ? 'root' : generateId(),
-            label: isRoot ? 'Mind Map' : 'Untitled',
-            collapsed: false,
-            children: []
-          };
+          return { id: isRoot ? 'root' : generateId(), label: isRoot ? 'Mind Map' : 'Untitled', collapsed: false, children: [] };
         }
         return {
           id: node.id || generateId(),
@@ -518,6 +419,48 @@ function generateMindmapHTML(treeData: MindmapNode, title: string): string {
           children: Array.isArray(node.children) ? node.children.map(child => normalizeTree(child, false)) : []
         };
       }
+
+      // Convert tree to flat nodes/edges
+      function treeToNodesEdges(tree, callbacks) {
+        const nodes = [];
+        const edges = [];
+        
+        function traverse(node, parentId) {
+          const hasChildren = node.children && node.children.length > 0;
+          nodes.push({
+            id: node.id,
+            type: 'mindMap',
+            position: { x: 0, y: 0 },
+            draggable: true,
+            data: {
+              label: node.label,
+              isRoot: !parentId,
+              collapsed: node.collapsed,
+              hasChildren,
+              onAddChild: callbacks.onAddChild,
+              onToggleCollapse: callbacks.onToggleCollapse,
+              onLabelChange: callbacks.onLabelChange,
+              onDelete: callbacks.onDelete
+            }
+          });
+          if (parentId) {
+            edges.push({
+              id: 'e-' + parentId + '-' + node.id,
+              source: parentId,
+              target: node.id,
+              type: 'smoothstep',
+              animated: true,
+              style: { stroke: '#ff8c00', strokeWidth: 2 }
+            });
+          }
+          if (!node.collapsed && node.children) {
+            node.children.forEach(child => traverse(child, node.id));
+          }
+        }
+        
+        traverse(tree, null);
+        return { nodes, edges };
+      }
       
       // Main mindmap content
       function MindMapContent({ initialData, title }) {
@@ -525,127 +468,102 @@ function generateMindmapHTML(treeData: MindmapNode, title: string): string {
         const [nodes, setNodes, onNodesChange] = useNodesState([]);
         const [edges, setEdges, onEdgesChange] = useEdgesState([]);
         const { fitView, zoomIn, zoomOut } = useReactFlow();
+        const initialLayoutDone = useRef(false);
+        const [editMode, setEditMode] = useState(false);
+        const [selectedIds, setSelectedIds] = useState(new Set());
 
-        useEffect(() => {
-          setTreeData(normalizeTree(initialData));
-        }, [initialData]);
-        
-        // Tree manipulation callbacks
-        const updateTree = useCallback((updateFn) => {
-          setTreeData(prev => updateFn(prev));
+        // Tree manipulation callbacks - must be stable
+        const handleAddChild = useCallback((parentId) => {
+          setTreeData(prev => {
+            const newChild = { id: generateId(), label: 'New Node', collapsed: false, children: [] };
+            const addTo = (node) => {
+              if (node.id === parentId) return { ...node, collapsed: false, children: [...(node.children || []), newChild] };
+              return { ...node, children: (node.children || []).map(addTo) };
+            };
+            return addTo(prev);
+          });
         }, []);
         
-        const handleAddChild = useCallback((parentId) => {
-          const newChild = { id: generateId(), label: 'New Node', collapsed: false, children: [] };
-          
-          const addChildToNode = (node) => {
-            if (node.id === parentId) {
-              return { ...node, collapsed: false, children: [...(node.children || []), newChild] };
-            }
-            return { ...node, children: (node.children || []).map(addChildToNode) };
-          };
-          
-          updateTree(addChildToNode);
-        }, [updateTree]);
-        
         const handleToggleCollapse = useCallback((nodeId) => {
-          const toggleNode = (node) => {
-            if (node.id === nodeId) {
-              return { ...node, collapsed: !node.collapsed };
-            }
-            return { ...node, children: (node.children || []).map(toggleNode) };
-          };
-          
-          updateTree(toggleNode);
-        }, [updateTree]);
+          setTreeData(prev => {
+            const toggle = (node) => {
+              if (node.id === nodeId) return { ...node, collapsed: !node.collapsed };
+              return { ...node, children: (node.children || []).map(toggle) };
+            };
+            return toggle(prev);
+          });
+        }, []);
         
         const handleLabelChange = useCallback((nodeId, newLabel) => {
-          const updateLabel = (node) => {
-            if (node.id === nodeId) {
-              return { ...node, label: newLabel };
-            }
-            return { ...node, children: (node.children || []).map(updateLabel) };
-          };
-          
-          updateTree(updateLabel);
-        }, [updateTree]);
+          setTreeData(prev => {
+            const update = (node) => {
+              if (node.id === nodeId) return { ...node, label: newLabel };
+              return { ...node, children: (node.children || []).map(update) };
+            };
+            return update(prev);
+          });
+        }, []);
         
         const handleDelete = useCallback((nodeId) => {
-          const removeNode = (node) => {
-            return {
-              ...node,
-              children: (node.children || []).filter(c => c.id !== nodeId).map(removeNode)
-            };
-          };
-          
-          updateTree(removeNode);
-        }, [updateTree]);
-        
-        // Convert tree to nodes and edges
+          setTreeData(prev => {
+            const remove = (node) => ({ ...node, children: (node.children || []).filter(c => c.id !== nodeId).map(remove) });
+            return remove(prev);
+          });
+        }, []);
+
+        // Build nodes/edges from tree and apply layout ONCE on tree structure change
         useEffect(() => {
-          const newNodes = [];
-          const newEdges = [];
-          
-          const traverse = (node, parentId = null) => {
-            const hasChildren = node.children && node.children.length > 0;
-            const dimensions = estimateNodeSize(node.label, parentId === null);
-            
-            newNodes.push({
-              id: node.id,
-              type: 'mindMap',
-              position: { x: 0, y: 0 },
-              style: { width: dimensions.width },
-              data: {
-                label: node.label,
-                isRoot: parentId === null,
-                collapsed: node.collapsed,
-                hasChildren: hasChildren,
-                onAddChild: handleAddChild,
-                onToggleCollapse: handleToggleCollapse,
-                onLabelChange: handleLabelChange,
-                onDelete: handleDelete
+          const callbacks = { onAddChild: handleAddChild, onToggleCollapse: handleToggleCollapse, onLabelChange: handleLabelChange, onDelete: handleDelete };
+          let { nodes: rawNodes, edges: rawEdges } = treeToNodesEdges(treeData, callbacks);
+          // inject editMode/selection handlers
+          rawNodes = rawNodes.map(n => ({
+            ...n,
+            data: {
+              ...n.data,
+              editMode,
+              selected: selectedIds.has(n.id),
+              onToggleSelect: (id) => {
+                setSelectedIds(prev => {
+                  const next = new Set(prev);
+                  if (next.has(id)) next.delete(id); else next.add(id);
+                  return next;
+                });
               }
-            });
-            
-            if (parentId) {
-              newEdges.push({
-                id: 'e-' + parentId + '-' + node.id,
-                source: parentId,
-                target: node.id,
-                type: 'smoothstep',
-                animated: true,
-                style: { stroke: '#ff8c00', strokeWidth: 2 }
-              });
             }
-            
-            // Only traverse children if not collapsed
-            if (!node.collapsed && node.children) {
-              node.children.forEach(child => traverse(child, node.id));
-            }
-          };
-          
-          traverse(treeData);
-          
-          // Apply layout
-          const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(newNodes, newEdges);
+          }));
+          const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(rawNodes, rawEdges);
           setNodes(layoutedNodes);
           setEdges(layoutedEdges);
-        }, [treeData, handleAddChild, handleToggleCollapse, handleLabelChange, handleDelete, setNodes, setEdges]);
+          initialLayoutDone.current = true;
+        }, [treeData, handleAddChild, handleToggleCollapse, handleLabelChange, handleDelete, setNodes, setEdges, editMode, selectedIds]);
         
-        // Fit view after layout
+        // Fit view after initial layout
         useEffect(() => {
-          const timer = setTimeout(() => {
-            fitView({ padding: 0.2, duration: 300 });
-          }, 100);
-          return () => clearTimeout(timer);
-        }, [nodes, fitView]);
+          if (initialLayoutDone.current) {
+            const timer = setTimeout(() => fitView({ padding: 0.2, duration: 300 }), 150);
+            return () => clearTimeout(timer);
+          }
+        }, [nodes.length, fitView]);
         
         const handleFitView = () => fitView({ padding: 0.2, duration: 300 });
-        const handleZoomIn = () => zoomIn({ duration: 200 });
-        const handleZoomOut = () => zoomOut({ duration: 200 });
+        const handleResetLayout = useCallback(() => {
+          const callbacks = { onAddChild: handleAddChild, onToggleCollapse: handleToggleCollapse, onLabelChange: handleLabelChange, onDelete: handleDelete };
+          const { nodes: rawNodes, edges: rawEdges } = treeToNodesEdges(treeData, callbacks);
+          const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(rawNodes, rawEdges);
+          setNodes(layoutedNodes);
+          setEdges(layoutedEdges);
+          setTimeout(() => fitView({ padding: 0.2, duration: 300 }), 100);
+        }, [treeData, handleAddChild, handleToggleCollapse, handleLabelChange, handleDelete, setNodes, setEdges, fitView]);
+
+        const toggleEditMode = () => {
+          setEditMode(m => !m);
+          if (editMode) {
+            // clearing selection when turning off
+            setSelectedIds(new Set());
+          }
+        };
         
         return React.createElement('div', { style: { width: '100%', height: '100%' } },
-          // Header
           React.createElement('div', { className: 'mindmap-header' },
             React.createElement('svg', { viewBox: '0 0 24 24', fill: 'none', strokeWidth: 2 },
               React.createElement('circle', { cx: 12, cy: 5, r: 3 }),
@@ -656,53 +574,45 @@ function generateMindmapHTML(treeData: MindmapNode, title: string): string {
             ),
             React.createElement('h1', null, title)
           ),
-          
-          // Control panel
           React.createElement('div', { className: 'control-panel' },
-            React.createElement('button', { className: 'panel-btn', onClick: handleZoomIn, title: 'Zoom In' }, '+ Zoom'),
-            React.createElement('button', { className: 'panel-btn', onClick: handleZoomOut, title: 'Zoom Out' }, '− Zoom'),
-            React.createElement('button', { className: 'panel-btn', onClick: handleFitView, title: 'Fit View' }, '⊡ Fit')
+            React.createElement('button', { className: 'panel-btn', onClick: () => zoomIn({ duration: 200 }), title: 'Zoom In' }, '+ Zoom'),
+            React.createElement('button', { className: 'panel-btn', onClick: () => zoomOut({ duration: 200 }), title: 'Zoom Out' }, '− Zoom'),
+            React.createElement('button', { className: 'panel-btn', onClick: handleFitView, title: 'Fit View' }, '⊡ Fit'),
+            React.createElement('button', { className: 'panel-btn', onClick: handleResetLayout, title: 'Reset Layout' }, '↺ Reset'),
+            React.createElement('button', { className: 'panel-btn', onClick: toggleEditMode, title: 'Toggle Edit Mode' }, editMode ? 'Edit: ON' : 'Edit: OFF')
           ),
-          
-          // React Flow
           React.createElement(ReactFlow, {
-            nodes,
-            edges,
-            onNodesChange,
-            onEdgesChange,
-            nodeTypes,
+            nodes: nodes,
+            edges: edges,
+            onNodesChange: onNodesChange,
+            onEdgesChange: onEdgesChange,
+            nodeTypes: nodeTypes,
             fitView: true,
-            minZoom: 0.15,
+            minZoom: 0.1,
             maxZoom: 2,
             panOnDrag: true,
-            selectionOnDrag: false,
-            panOnScroll: true,
+            panOnScroll: false,
             zoomOnScroll: true,
             zoomOnPinch: true,
+            zoomOnDoubleClick: false,
             nodesDraggable: true,
             nodesConnectable: false,
-            attributionPosition: 'bottom-left',
+            elementsSelectable: true,
+            selectNodesOnDrag: false,
             proOptions: { hideAttribution: true },
-            defaultEdgeOptions: {
-              type: 'smoothstep',
-              animated: true,
-              style: { stroke: '#ff8c00', strokeWidth: 2 }
-            }
+            defaultEdgeOptions: { type: 'smoothstep', animated: true, style: { stroke: '#ff8c00', strokeWidth: 2 } }
           },
-            React.createElement(Background, { variant: 'dots', gap: 20, size: 1, color: 'rgba(255, 140, 0, 0.15)' }),
             React.createElement(Controls, { showInteractive: false, showZoom: true, showFitView: true })
           )
         );
       }
       
-      // App wrapper with provider
       function MindMapApp({ initialData, title }) {
         return React.createElement(ReactFlowProvider, null,
           React.createElement(MindMapContent, { initialData: initialData, title: title })
         );
       }
       
-      // Initialize
       const treeData = ${treeDataJson};
       const title = "${escapedTitle}";
       const root = ReactDOM.createRoot(document.getElementById('mindmap-root'));
