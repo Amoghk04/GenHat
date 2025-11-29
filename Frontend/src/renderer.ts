@@ -716,11 +716,11 @@ function initializeApp() {
     
     // Add a system message indicating the mode switch
     const modeMessages: Record<string, string> = {
-      'chat': '💬 Switched to Chat mode',
-      'mindmap': '🧠 Switched to Mind Map mode - Describe the concepts you want to map',
-      'podcast': '🎙️ Switched to Podcast mode - I can create podcast content from your documents'
+      'chat': 'Switched to Chat mode',
+      'mindmap': 'Switched to Mind Map mode',
+      'podcast': 'Switched to Podcast mode'
     }
-    addChatMessage(modeMessages[newType], false)
+    addBanner(modeMessages[newType])
     
     // Re-render tabs to show updated icon
     renderTabs()
@@ -1918,6 +1918,38 @@ function initializeApp() {
     lucide.createIcons()
   }
 
+  // Add a banner system message (mode switches, notices)
+  function addBanner(text: string) {
+    if (!activeTabId) return
+    const banner = document.createElement('div')
+    banner.style.cssText = `
+      align-self: center;
+      background: rgba(255, 140, 0, 0.12);
+      border: 1px solid rgba(255, 140, 0, 0.5);
+      color: #ff8c00;
+      padding: 6px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    `
+    const icon = document.createElement('i')
+    icon.setAttribute('data-lucide', 'info')
+    icon.style.width = '14px'
+    icon.style.height = '14px'
+    const span = document.createElement('span')
+    span.textContent = text
+    banner.appendChild(icon)
+    banner.appendChild(span)
+    chatContainerEl.appendChild(banner)
+    chatContainerEl.scrollTop = chatContainerEl.scrollHeight
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons({ root: banner })
+    }
+  }
+
   // Enter edit mode for a message
   function enterEditMode(messageEl: HTMLElement, bubble: HTMLElement, originalText: string, messageId: string, isUser: boolean) {
     const messageIndex = chatMessages.findIndex(m => m.id === messageId)
@@ -2664,7 +2696,6 @@ function initializeApp() {
   // New Tab button in tab bar - creates a new Chat tab by default
   newTabBtn!.addEventListener('click', () => {
     const tabId = createNewTab('chat')
-    addChatMessage('Start a new conversation...', false)
   })
 
   // Type Switcher - toggle dropdown
