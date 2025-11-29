@@ -1,0 +1,14 @@
+1.pip install pyinstaller
+
+2.# Run this from the 'Backend' folder
+cd Backend
+pyinstaller --name backend --onedir --clean app.py
+
+3.cd Frontend
+npm install --save-dev electron-builder
+
+npm install --save-dev esbuild
+
+npm run build
+
+npx electron-builder --win
