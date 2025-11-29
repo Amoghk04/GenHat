@@ -1311,6 +1311,171 @@ async def call_gemini_api(prompt: str, api_key: str, model: str = "gemini-2.0-fl
         return f"[Gemini parse error: {e}]"
 
 
+# --- Mindmap JSON Generation Endpoint ---
+
+class MindmapRequest(BaseModel):
+    cache_key: str
+    prompt: str
+    persona: Optional[str] = "General User"
+    k: int = 5
+    gemini_model: Optional[str] = GEMINI_DEFAULT_MODEL
+
+
+@app.post("/generate-mindmap")
+async def generate_mindmap(request: MindmapRequest):
+    """
+    Generate a hierarchical mindmap JSON structure from document analysis.
+    Returns a tree structure suitable for React Flow visualization.
+    """
+    try:
+        if request.cache_key not in pdf_cache:
+            raise HTTPException(status_code=404, detail="Cache key not found. Please upload PDFs first.")
+        
+        cached_data = pdf_cache[request.cache_key]
+        if "retriever" not in cached_data:
+            raise HTTPException(status_code=400, detail="Cache not ready. Please wait for processing to complete.")
+        
+        retriever = cached_data["retriever"]
+        chunks = cached_data["chunks"]
+        
+        logger.info(f"🧠 Generating mindmap for prompt: {request.prompt}")
+        
+        # Retrieve relevant chunks
+        query = f"{request.persona} {request.prompt}"
+        try:
+            top_chunks = search_top_k_hybrid(retriever, query, persona=request.persona, task=request.prompt, k=request.k)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Retrieval failed: {e}")
+        
+        if not top_chunks:
+            raise HTTPException(status_code=400, detail="No relevant sections found in documents")
+        
+        # Build context from chunks
+        sections_parts = []
+        for idx, ch in enumerate(top_chunks, start=1):
+            sections_parts.append(
+                f"Section {idx}:\nDocument: {ch.get('pdf_name','Unknown')}\nHeading: {ch.get('heading', 'No heading')}\nContent:\n{ch.get('content', ch.get('text',''))}\n---"
+            )
+        sections_blob = "\n".join(sections_parts)
+        
+        # Mindmap generation prompt
+        mindmap_prompt = f"""You are an expert at creating hierarchical mind maps from document content.
+
+Based on the following document sections, create a comprehensive mind map structure for the topic: "{request.prompt}"
+
+DOCUMENT SECTIONS:
+{sections_blob}
+
+INSTRUCTIONS:
+1. Create a hierarchical JSON structure representing a mind map
+2. The root node should be the main topic/concept
+3. Create 3-6 main branches representing key themes or categories
+4. Each branch can have 2-4 sub-nodes with more specific details
+5. Keep labels concise but descriptive (5-15 words max per label)
+6. Ground all content in the provided document sections
+7. Organize information logically from general to specific
+
+OUTPUT FORMAT (strict JSON only, no markdown, no explanation):
+{{
+  "id": "root",
+  "label": "Main Topic Title",
+  "collapsed": false,
+  "children": [
+    {{
+      "id": "unique-id-1",
+      "label": "Branch 1 Label",
+      "collapsed": false,
+      "children": [
+        {{
+          "id": "unique-id-1-1",
+          "label": "Sub-detail 1",
+          "collapsed": false,
+          "children": []
+        }}
+      ]
+    }}
+  ]
+}}
+
+IMPORTANT:
+- Return ONLY valid JSON, no markdown code blocks, no explanation text
+- Each node must have: id (unique string), label (string), collapsed (boolean), children (array)
+- Generate unique IDs like "node-1", "node-1-1", "node-2", etc.
+- Maximum depth: 3 levels (root -> branch -> detail)
+
+Generate the mind map JSON now:"""
+
+        # Call Gemini API
+        gemini_response = await call_gemini_api(
+            mindmap_prompt,
+            os.getenv("VITE_GEMINI_API_KEY"),
+            model=request.gemini_model or GEMINI_DEFAULT_MODEL
+        )
+        
+        if gemini_response.startswith("[Gemini"):
+            raise HTTPException(status_code=500, detail=f"Gemini API error: {gemini_response}")
+        
+        # Parse JSON response
+        try:
+            # Clean up response - remove markdown code blocks if present
+            cleaned_response = gemini_response.strip()
+            if cleaned_response.startswith("```json"):
+                cleaned_response = cleaned_response[7:]
+            if cleaned_response.startswith("```"):
+                cleaned_response = cleaned_response[3:]
+            if cleaned_response.endswith("```"):
+                cleaned_response = cleaned_response[:-3]
+            cleaned_response = cleaned_response.strip()
+            
+            mindmap_data = json.loads(cleaned_response)
+            
+            # Validate structure
+            if not isinstance(mindmap_data, dict):
+                raise ValueError("Response is not a JSON object")
+            if "id" not in mindmap_data or "label" not in mindmap_data:
+                raise ValueError("Missing required fields: id, label")
+            if "children" not in mindmap_data:
+                mindmap_data["children"] = []
+            if "collapsed" not in mindmap_data:
+                mindmap_data["collapsed"] = False
+                
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse mindmap JSON: {e}")
+            logger.error(f"Raw response: {gemini_response[:500]}")
+            # Return a fallback structure
+            mindmap_data = {
+                "id": "root",
+                "label": request.prompt,
+                "collapsed": False,
+                "children": [
+                    {
+                        "id": "error-node",
+                        "label": "Failed to generate detailed mindmap. Try rephrasing your prompt.",
+                        "collapsed": False,
+                        "children": []
+                    }
+                ]
+            }
+        
+        logger.info(f"✅ Mindmap generated with {len(mindmap_data.get('children', []))} main branches")
+        
+        return {
+            "success": True,
+            "mindmap": mindmap_data,
+            "prompt": request.prompt,
+            "chunks_used": len(top_chunks),
+            "project_name": cached_data.get("project_name")
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error generating mindmap: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error generating mindmap: {e}")
+
+
 def _build_multi_speaker_ssml(script_text: str, voice_a: str, voice_b: str, name_a: str, name_b: str, lang: str = "en-US") -> str:
     """Build SSML for two-speaker podcast dialogue.
     

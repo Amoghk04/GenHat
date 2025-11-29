@@ -378,3 +378,49 @@ export async function importProjectCache(data: ImportProjectCacheRequest): Promi
   return response.json()
 }
 
+/**
+ * Mindmap tree data structure
+ */
+export interface MindmapTreeData {
+  id: string
+  label: string
+  collapsed: boolean
+  children: MindmapTreeData[]
+}
+
+/**
+ * Generate mindmap JSON structure from document analysis
+ */
+export interface GenerateMindmapResponse {
+  success: boolean
+  mindmap: MindmapTreeData
+  prompt: string
+  chunks_used: number
+  project_name: string
+}
+
+export async function generateMindmap(
+  cacheKey: string,
+  prompt: string,
+  k: number = 10
+): Promise<GenerateMindmapResponse> {
+  const payload = {
+    cache_key: cacheKey,
+    prompt,
+    k
+  }
+
+  const response = await fetch(`${BACKEND_URL}/generate-mindmap`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+
+  if (!response.ok) {
+    const error = await response.text()
+    throw new Error(`Failed to generate mindmap: ${error}`)
+  }
+
+  return response.json()
+}
+
