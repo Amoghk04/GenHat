@@ -725,6 +725,7 @@ function initializeApp() {
     // Re-render tabs to show updated icon
     renderTabs()
     updateTypeSwitcherCheckmarks()
+    updateTypeSwitcherButtonIcon()
   }
 
   // Update checkmarks in type switcher dropdown based on current tab type
@@ -747,6 +748,18 @@ function initializeApp() {
     // Re-initialize icons in the dropdown
     if (typeof lucide !== 'undefined') {
       lucide.createIcons({ nameAttr: 'data-lucide' })
+    }
+  }
+
+  // Update the icon of the type switcher button to reflect active mode
+  function updateTypeSwitcherButtonIcon() {
+    if (!typeSwitcherBtn || !activeTabId) return
+    const tab = tabs.get(activeTabId)
+    if (!tab) return
+    const iconName = tab.type === 'mindmap' ? 'brain' : tab.type === 'podcast' ? 'podcast' : 'message-square'
+    typeSwitcherBtn.innerHTML = `<i data-lucide="${iconName}" style="width: 18px; height: 18px;"></i>`
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons({ root: typeSwitcherBtn, nameAttr: 'data-lucide' })
     }
   }
 
@@ -869,6 +882,7 @@ function initializeApp() {
 
     renderTabs()
     updateTypeSwitcherCheckmarks()
+    updateTypeSwitcherButtonIcon()
   }
 
   function closeTab(tabId: string) {
@@ -1096,6 +1110,9 @@ function initializeApp() {
 
     // Update scroll indicators after rendering tabs
     setTimeout(() => updateScrollIndicators(), 50)
+
+    // Update type switcher button icon
+    updateTypeSwitcherButtonIcon()
   }
 
   function clearObjectURLs() {
@@ -2640,6 +2657,9 @@ function initializeApp() {
 
   // Chat send button
   sendButton!.addEventListener('click', sendMessage)
+
+  // Initialize type switcher icon with current state
+  updateTypeSwitcherButtonIcon()
 
   // New Tab button in tab bar - creates a new Chat tab by default
   newTabBtn!.addEventListener('click', () => {
