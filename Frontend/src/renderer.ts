@@ -55,6 +55,8 @@ type AppState = {
   isProcessing: boolean
   currentPersona: string
   currentTask: string
+  savedMindmaps?: { title: string, tree: any, createdAt: string }[]
+  savedPodcasts?: { title: string, audioUrl?: string, script?: string, createdAt: string }[]
 }
 
 // Helper to convert Blob/File to Base64
@@ -425,6 +427,94 @@ function initializeApp() {
             // Use rebuildFileList to render consistent UI once after all files are loaded
             rebuildFileList()
 
+              // Restore saved mindmaps in sidebar
+              if (appState.savedMindmaps && appState.savedMindmaps.length > 0) {
+                const mindmapList = document.getElementById('mindmapList')
+                if (mindmapList) {
+                  mindmapList.innerHTML = ''
+                  appState.savedMindmaps.forEach((mm) => {
+                    const li = document.createElement('li')
+                    li.style.cssText = 'padding:12px; border:1px solid #2a2a2a; border-radius:6px; margin-bottom:8px; background:#1a1a1a; display:flex; flex-direction:column; gap:6px;'
+                    li.innerHTML = `
+                      <div style='display:flex; justify-content:space-between; align-items:center;'>
+                        <span style='color:#ff8c00; font-weight:600; display:flex; align-items:center; gap:6px;'>
+                          <i data-lucide="brain-circuit" style="width:14px; height:14px;"></i> ${mm.title}
+                        </span>
+                        <span style='font-size:11px; color:#666;'>${new Date(mm.createdAt).toLocaleString()}</span>
+                      </div>
+                      <button class='open-mindmap-btn' style='background:#2a2a2a; border:1px solid #3a3a3a; color:#e0e0e0; border-radius:6px; padding:6px 8px; cursor:pointer; display:flex; align-items:center; gap:6px;'>
+                        <i data-lucide="open-panel-right" style="width:14px; height:14px;"></i> Open
+                      </button>
+                    `
+                    mindmapList.appendChild(li)
+                    const openBtn = li.querySelector('.open-mindmap-btn') as HTMLButtonElement
+                    if (openBtn) {
+                      openBtn.addEventListener('click', () => {
+                        showMindmapVisualization(mm.tree, mm.title)
+                      })
+                    }
+                    if (typeof lucide !== 'undefined') {
+                      lucide.createIcons({ root: li })
+                    }
+                  })
+                }
+              }
+
+              // Restore saved podcasts in sidebar
+              if (appState.savedPodcasts && appState.savedPodcasts.length > 0) {
+                const podcastList = document.getElementById('podcastList')
+                if (podcastList) {
+                  podcastList.innerHTML = ''
+                  appState.savedPodcasts.forEach((pc) => {
+                    const item = document.createElement('li')
+                    item.style.cssText = 'padding:12px; border:1px solid #2a2a2a; border-radius:6px; margin-bottom:8px; background:#1a1a1a; display:flex; flex-direction:column; gap:8px;'
+                    const fullAudioUrl = pc.audioUrl
+                    item.innerHTML = `
+                      <div style='display:flex; justify-content:space-between; align-items:center;'>
+                        <strong style='color:#ff8c00;'>🎙️ ${pc.title}</strong>
+                        <span style='font-size:11px; color:#666;'>${new Date(pc.createdAt).toLocaleString()}</span>
+                      </div>
+                      ${fullAudioUrl ? `<div class="audio-player-container" style="display: block; margin: 8px 0; padding: 8px; background: #1a1a1a; border-radius: 6px; border: 1px solid #ff8c00;" ${pc.script ? `data-script="${pc.script.replace(/"/g, '&quot;')}"` : ''}>
+                        <div style="font-size: 11px; color: #ff8c00; margin-bottom: 6px; font-weight: 600; display: flex; align-items: center; justify-content: space-between;">
+                          <div style="display: flex; align-items: center; gap: 4px;">
+                            <i data-lucide="headphones" style="width: 12px; height: 12px;"></i> Audio
+                          </div>
+                          <button class="transcript-btn" style="background: transparent; border: none; color: #ff8c00; cursor: pointer; display: flex; align-items: center; gap: 2px; font-size: 10px; padding: 2px 6px; border-radius: 3px; transition: all 0.2s ease;" title="View Transcript">
+                            <i data-lucide="file-text" style="width: 12px; height: 12px;"></i> Transcript
+                          </button>
+                        </div>
+                        <div class="spectrum-display" style="width: 98%;height: 60px;background: #0d0d0d;border-radius: 4px;display: flex;align-items: center;position: relative;margin-bottom: 6px;padding-right: 5px;">
+                          <button class="play-pause-btn" style="position: absolute; left: 10px; z-index: 10; background: rgba(255, 140, 0, 0.9); border: none; border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s ease; color: white; font-size: 12px;">
+                            <i data-lucide="play" style="width: 12px; height: 12px;"></i>
+                          </button>
+                          <canvas class="audio-spectrum" width="160" height="40" style="flex: 1; background: transparent; margin-left: 45px;"></canvas>
+                        </div>
+                        <div class="progress-container" style="width: 100%; height: 3px; background: #333; border-radius: 2px; cursor: pointer; position: relative;">
+                          <div class="progress-bar" style="height: 100%; background: #ff8c00; border-radius: 2px; width: 0%; transition: width 0.1s ease;"></div>
+                        </div>
+                        <audio preload="metadata" style="display: none;">
+                          <source src="${fullAudioUrl}" type="audio/mpeg">
+                        </audio>
+                      </div>` : `<div style='color:#888; font-size:12px;'>No audio available</div>`}
+                    `
+                    podcastList.appendChild(item)
+                    const audioElements = item.querySelectorAll('audio')
+                    audioElements.forEach(audio => initializeAudioSpectrum(audio as HTMLAudioElement))
+                    if (typeof lucide !== 'undefined') {
+                      lucide.createIcons({ root: item })
+                    }
+                    const transcriptBtn = item.querySelector('.transcript-btn') as HTMLButtonElement
+                    if (transcriptBtn) {
+                      transcriptBtn.addEventListener('click', (e) => {
+                        e.stopPropagation()
+                        const script = item.querySelector('.audio-player-container')?.getAttribute('data-script') || 'Script not available'
+                        showTranscriptPopup(script)
+                      })
+                    }
+                  })
+                }
+              }
+
             // Check if we have backend cache (embeddings, chunks, prompt cache) from v1.1+ files
             if (projectData.backendCache && projectData.backendCache.chunks && projectData.backendCache.chunks.length > 0) {
               try {
@@ -570,7 +660,9 @@ function initializeApp() {
     projectName: 'GenHat_Session_' + Date.now(),
     isProcessing: false,
     currentPersona: 'General User',
-    currentTask: 'Analyze and summarize documents'
+    currentTask: 'Analyze and summarize documents',
+    savedMindmaps: [],
+    savedPodcasts: []
   }
 
   let currentPDFViewer: PDFViewer | null = null
@@ -2187,6 +2279,14 @@ function initializeApp() {
               showTranscriptPopup(script)
             })
           }
+          // Save podcast in app state for persistence
+          appState.savedPodcasts = appState.savedPodcasts || []
+          appState.savedPodcasts.push({
+            title,
+            audioUrl: fullAudioUrl || undefined,
+            script: podcastResp.script,
+            createdAt: new Date().toISOString()
+          })
         }
       } else if (currentPlatform === 'mindmap') {
         // Use dedicated mindmap generation endpoint
@@ -2228,17 +2328,7 @@ function initializeApp() {
             font-size: 14px;
           `
           showMindmapBtn.innerHTML = `
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M12 2c1.657 0 3 1.343 3 3s-1.343 3-3 3-3-1.343-3-3 1.343-3 3-3z"></path>
-              <path d="M6 9c1.657 0 3 1.343 3 3s-1.343 3-3 3-3-1.343-3-3 1.343-3 3-3z"></path>
-              <path d="M18 9c1.657 0 3 1.343 3 3s-1.343 3-3 3-3-1.343-3-3 1.343-3 3-3z"></path>
-              <path d="M15 17c1.657 0 3 1.343 3 3s-1.343 3-3 3-3-1.343-3-3 1.343-3 3-3z"></path>
-              <path d="M9 17c1.657 0 3 1.343 3 3s-1.343 3-3 3-3-1.343-3-3 1.343-3 3-3z"></path>
-              <line x1="12" y1="5" x2="6" y2="9"></line>
-              <line x1="12" y1="5" x2="18" y2="9"></line>
-              <line x1="6" y1="12" x2="9" y2="17"></line>
-              <line x1="18" y1="12" x2="15" y2="17"></line>
-            </svg>
+            <i data-lucide="brain-circuit" style="width:16px; height:16px;"></i>
             Open Mind Map
           `
           showMindmapBtn.addEventListener('mouseover', () => {
@@ -2258,6 +2348,46 @@ function initializeApp() {
           messageWrapper.appendChild(bubble)
           chatContainerEl.appendChild(messageWrapper)
           chatContainerEl.scrollTop = chatContainerEl.scrollHeight
+
+          // Initialize Lucide icons for the newly added content
+          if (typeof lucide !== 'undefined') {
+            lucide.createIcons({ root: messageWrapper, nameAttr: 'data-lucide' })
+          }
+
+          // Save to app state and sidebar list
+          appState.savedMindmaps = appState.savedMindmaps || []
+          const savedItem = { title: mindmapTitle, tree: treeData, createdAt: new Date().toISOString() }
+          appState.savedMindmaps.push(savedItem)
+          const mindmapList = document.getElementById('mindmapList')
+          if (mindmapList) {
+            // Remove empty state
+            mindmapList.querySelectorAll('div').forEach(div => {
+              if (div.textContent?.includes('No mindmaps')) div.remove()
+            })
+            const li = document.createElement('li')
+            li.style.cssText = 'padding:12px; border:1px solid #2a2a2a; border-radius:6px; margin-bottom:8px; background:#1a1a1a; display:flex; flex-direction:column; gap:6px;'
+            li.innerHTML = `
+              <div style='display:flex; justify-content:space-between; align-items:center;'>
+                <span style='color:#ff8c00; font-weight:600; display:flex; align-items:center; gap:6px;'>
+                  <i data-lucide="brain-circuit" style="width:14px; height:14px;"></i> ${mindmapTitle}
+                </span>
+                <span style='font-size:11px; color:#666;'>${new Date().toLocaleString()}</span>
+              </div>
+              <button class='open-mindmap-btn' style='background:#2a2a2a; border:1px solid #3a3a3a; color:#e0e0e0; border-radius:6px; padding:6px 8px; cursor:pointer; display:flex; align-items:center; gap:6px;'>
+                <i data-lucide="open-panel-right" style="width:14px; height:14px;"></i> Open
+              </button>
+            `
+            mindmapList.prepend(li)
+            const openBtn = li.querySelector('.open-mindmap-btn') as HTMLButtonElement
+            if (openBtn) {
+              openBtn.addEventListener('click', () => {
+                showMindmapVisualization(treeData, mindmapTitle)
+              })
+            }
+            if (typeof lucide !== 'undefined') {
+              lucide.createIcons({ root: li })
+            }
+          }
         } catch (mindmapError) {
           console.error('Mindmap generation error:', mindmapError)
           addChatMessage(`❌ Failed to generate mind map: ${mindmapError instanceof Error ? mindmapError.message : 'Unknown error'}`, false)
