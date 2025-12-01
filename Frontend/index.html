@@ -893,6 +893,12 @@
         max-height: 400px;
         overflow-y: auto;
         padding-right: 8px;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+      }
+
+      .file-progress-container::-webkit-scrollbar {
+        display: none;
       }
 
       .file-progress-item {

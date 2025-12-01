@@ -39,6 +39,11 @@ type FileEntry = {
   path?: string
 }
 
+type MindmapData = {
+  title: string
+  tree: any
+}
+
 type Platform = 'mindmap' | 'podcast' | 'more'
 
 type ChatMessage = {
@@ -47,6 +52,7 @@ type ChatMessage = {
   timestamp: Date
   id?: string
   branchFrom?: string
+  mindmapData?: MindmapData
 }
 
 type AppState = {
@@ -384,7 +390,7 @@ function initializeApp() {
             }
             // Re-render chat
             chatContainerEl.innerHTML = ''
-            chatMessages.forEach(msg => addChatMessage(msg.text, msg.isUser, msg.branchFrom, true))
+            chatMessages.forEach(msg => addChatMessage(msg.text, msg.isUser, msg.branchFrom, true, msg.mindmapData))
           }
 
           // Restore Files
@@ -437,13 +443,11 @@ function initializeApp() {
                     li.style.cssText = 'padding:12px; border:1px solid #2a2a2a; border-radius:6px; margin-bottom:8px; background:#1a1a1a; display:flex; flex-direction:column; gap:6px;'
                     li.innerHTML = `
                       <div style='display:flex; justify-content:space-between; align-items:center;'>
-                        <span style='color:#ff8c00; font-weight:600; display:flex; align-items:center; gap:6px;'>
-                          <i data-lucide="brain-circuit" style="width:14px; height:14px;"></i> ${mm.title}
-                        </span>
+                        <span style='color:#ff8c00; font-weight:600;'>${mm.title}</span>
                         <span style='font-size:11px; color:#666;'>${new Date(mm.createdAt).toLocaleString()}</span>
                       </div>
-                      <button class='open-mindmap-btn' style='background:#2a2a2a; border:1px solid #3a3a3a; color:#e0e0e0; border-radius:6px; padding:6px 8px; cursor:pointer; display:flex; align-items:center; gap:6px;'>
-                        <i data-lucide="open-panel-right" style="width:14px; height:14px;"></i> Open
+                      <button class='open-mindmap-btn' style='background:#2a2a2a; border:1px solid #3a3a3a; color:#e0e0e0; border-radius:6px; padding:6px 8px; cursor:pointer;'>
+                        Open
                       </button>
                     `
                     mindmapList.appendChild(li)
@@ -837,6 +841,10 @@ function initializeApp() {
           bubble.textContent = msg.text
         }
 
+        if (msg.mindmapData) {
+          appendMindmapButton(bubble, msg.mindmapData)
+        }
+
         // Create buttons container
         const buttonsContainer = document.createElement('div')
         buttonsContainer.className = 'message-buttons-container'
@@ -940,6 +948,10 @@ function initializeApp() {
                 bubble.innerHTML = parseMarkdown(msg.text)
               } else {
                 bubble.textContent = msg.text
+              }
+
+              if (msg.mindmapData) {
+                appendMindmapButton(bubble, msg.mindmapData)
               }
 
               const buttonsContainer = document.createElement('div')
@@ -1800,7 +1812,7 @@ function initializeApp() {
   }
 
   // Add message to chat
-  function addChatMessage(text: string, isUser: boolean, branchFrom?: string, skipStateUpdate: boolean = false) {
+  function addChatMessage(text: string, isUser: boolean, branchFrom?: string, skipStateUpdate: boolean = false, mindmapData?: MindmapData) {
     // Don't add messages if no active tab
     if (!activeTabId) {
       console.error('No active tab to add message to')
@@ -1819,7 +1831,8 @@ function initializeApp() {
       isUser,
       timestamp: new Date(),
       id: messageId,
-      branchFrom
+      branchFrom,
+      mindmapData
     }
     
     // Add message to active tab's messages array
@@ -1847,6 +1860,10 @@ function initializeApp() {
       bubble.innerHTML = parseMarkdown(text)
     } else {
       bubble.textContent = text
+    }
+
+    if (mindmapData) {
+      appendMindmapButton(bubble, mindmapData)
     }
 
     // Create buttons container (outside bubble)
@@ -1916,6 +1933,45 @@ function initializeApp() {
     
     // Initialize icons
     lucide.createIcons()
+  }
+
+  function appendMindmapButton(bubble: HTMLDivElement, data: MindmapData) {
+    const showMindmapBtn = document.createElement('button')
+    showMindmapBtn.style.cssText = `
+      background: linear-gradient(135deg, #ff8c00 0%, #ff6b00 100%);
+      border: none;
+      border-radius: 6px;
+      padding: 10px 20px;
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-size: 14px;
+      margin-top: 12px;
+    `
+    showMindmapBtn.innerHTML = `
+      <i data-lucide="brain-circuit" style="width:16px; height:16px;"></i>
+      Open Mind Map
+    `
+    showMindmapBtn.addEventListener('mouseover', () => {
+      showMindmapBtn.style.transform = 'translateY(-2px)'
+      showMindmapBtn.style.boxShadow = '0 4px 12px rgba(255, 140, 0, 0.4)'
+    })
+    showMindmapBtn.addEventListener('mouseout', () => {
+      showMindmapBtn.style.transform = 'translateY(0)'
+      showMindmapBtn.style.boxShadow = 'none'
+    })
+    showMindmapBtn.addEventListener('click', () => {
+      showMindmapVisualization(data.tree, data.title)
+    })
+    bubble.appendChild(showMindmapBtn)
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons({ root: showMindmapBtn, nameAttr: 'data-lucide' })
+    }
   }
 
   // Add a banner system message (mode switches, notices)
@@ -2346,62 +2402,13 @@ function initializeApp() {
           // Store the tree data and title for the click handler closure
           const treeData = mindmapResponse.mindmap
           const mindmapTitle = `Mind Map - ${task.substring(0, 30)}...`
-          
-          // Create message wrapper with button to open mindmap
-          const messageWrapper = document.createElement('div')
-          messageWrapper.className = 'message-item-wrapper'
 
-          const bubble = document.createElement('div')
-          bubble.className = 'message-bubble'
-          bubble.style.cssText = `
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 16px;
-          `
-
-          const showMindmapBtn = document.createElement('button')
-          showMindmapBtn.style.cssText = `
-            background: linear-gradient(135deg, #ff8c00 0%, #ff6b00 100%);
-            border: none;
-            border-radius: 6px;
-            padding: 10px 20px;
-            color: white;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            font-size: 14px;
-          `
-          showMindmapBtn.innerHTML = `
-            <i data-lucide="brain-circuit" style="width:16px; height:16px;"></i>
-            Open Mind Map
-          `
-          showMindmapBtn.addEventListener('mouseover', () => {
-            showMindmapBtn.style.transform = 'translateY(-2px)'
-            showMindmapBtn.style.boxShadow = '0 4px 12px rgba(255, 140, 0, 0.4)'
-          })
-          showMindmapBtn.addEventListener('mouseout', () => {
-            showMindmapBtn.style.transform = 'translateY(0)'
-            showMindmapBtn.style.boxShadow = 'none'
-          })
-          showMindmapBtn.addEventListener('click', () => {
-            console.log('Opening mindmap with tree:', treeData, 'title:', mindmapTitle)
-            showMindmapVisualization(treeData, mindmapTitle)
-          })
-
-          bubble.appendChild(showMindmapBtn)
-          messageWrapper.appendChild(bubble)
-          chatContainerEl.appendChild(messageWrapper)
-          chatContainerEl.scrollTop = chatContainerEl.scrollHeight
-
-          // Initialize Lucide icons for the newly added content
-          if (typeof lucide !== 'undefined') {
-            lucide.createIcons({ root: messageWrapper, nameAttr: 'data-lucide' })
+          const mindmapData: MindmapData = {
+            title: mindmapTitle,
+            tree: treeData
           }
+          const mindmapMessageText = `**${mindmapTitle}**\n`
+          addChatMessage(mindmapMessageText, false, undefined, false, mindmapData)
 
           // Save to app state and sidebar list
           appState.savedMindmaps = appState.savedMindmaps || []
@@ -2417,13 +2424,11 @@ function initializeApp() {
             li.style.cssText = 'padding:12px; border:1px solid #2a2a2a; border-radius:6px; margin-bottom:8px; background:#1a1a1a; display:flex; flex-direction:column; gap:6px;'
             li.innerHTML = `
               <div style='display:flex; justify-content:space-between; align-items:center;'>
-                <span style='color:#ff8c00; font-weight:600; display:flex; align-items:center; gap:6px;'>
-                  <i data-lucide="brain-circuit" style="width:14px; height:14px;"></i> ${mindmapTitle}
-                </span>
+                <span style='color:#ff8c00; font-weight:600;'>${mindmapTitle}</span>
                 <span style='font-size:11px; color:#666;'>${new Date().toLocaleString()}</span>
               </div>
-              <button class='open-mindmap-btn' style='background:#2a2a2a; border:1px solid #3a3a3a; color:#e0e0e0; border-radius:6px; padding:6px 8px; cursor:pointer; display:flex; align-items:center; gap:6px;'>
-                <i data-lucide="open-panel-right" style="width:14px; height:14px;"></i> Open
+              <button class='open-mindmap-btn' style='background:#2a2a2a; border:1px solid #3a3a3a; color:#e0e0e0; border-radius:6px; padding:6px 8px; cursor:pointer;'>
+                Open
               </button>
             `
             mindmapList.prepend(li)
