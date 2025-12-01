@@ -446,7 +446,7 @@ function initializeApp() {
                         <span style='color:#ff8c00; font-weight:600;'>${mm.title}</span>
                         <span style='font-size:11px; color:#666;'>${new Date(mm.createdAt).toLocaleString()}</span>
                       </div>
-                      <button class='open-mindmap-btn' style='background:#2a2a2a; border:1px solid #3a3a3a; color:#e0e0e0; border-radius:6px; padding:6px 8px; cursor:pointer;'>
+                      <button class='open-mindmap-btn' style='cursor: pointer; width: 93%; padding: 10px; background: #ff8c00; color: white; border-radius: 6px; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 14px; font-weight: 600; transition: all 0.2s ease; border: none; margin-bottom: 8px; flex-shrink: 0;'>
                         Open
                       </button>
                     `
@@ -678,7 +678,7 @@ function initializeApp() {
     const tabId = `tab-${tabCounter++}`
     const icon = type === 'chat' ? 'message-square' : type === 'mindmap' ? 'brain' : 'podcast'
     const typeName = type === 'chat' ? 'Chat' : type === 'mindmap' ? 'Mind Map' : 'Podcast'
-    const tabName = `${typeName} ${tabs.size}`
+    const tabName = typeName
     
     tabs.set(tabId, {
       id: tabId,
@@ -715,8 +715,7 @@ function initializeApp() {
     
     // Update tab name to reflect new type
     const typeName = newType === 'chat' ? 'Chat' : newType === 'mindmap' ? 'Mind Map' : 'Podcast'
-    const tabNumber = tab.name.match(/\d+$/)
-    tab.name = tabNumber ? `${typeName} ${tabNumber[0]}` : typeName
+    tab.name = typeName
     
     // Add a system message indicating the mode switch
     const modeMessages: Record<string, string> = {
