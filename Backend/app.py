@@ -129,7 +129,7 @@ META_FILENAME = "meta.json"
 CHUNKS_FILENAME = "chunks.json"
 
 # Constants
-GEMINI_DEFAULT_MODEL = 'gemini-2.5-flash'
+GEMINI_DEFAULT_MODEL = 'gemini-3-flash-preview'
 
 # ---------------- Persistence Helpers -----------------
 
@@ -1275,10 +1275,10 @@ async def call_gemini_api(prompt: str, api_key: str, model: str = "gemini-2.0-fl
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {
-            "temperature": 0.7,
+            "temperature": 0.9,
             "topK": 40,
             "topP": 0.95,
-            "maxOutputTokens": 4096,
+            "maxOutputTokens": 8192,
         },
         "safetySettings": [
             {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
@@ -1658,53 +1658,63 @@ SECTIONS END
         name_a = voices[voice_a]
         name_b = voices[voice_b]
 
-        # Script generation prompt - TWO SPEAKER CONVERSATION
+        # Script generation prompt - TWO SPEAKER CONVERSATION (strict, 3-4 min length)
         script_prompt = f"""
-You are writing a conversational podcast dialogue between TWO hosts {name_a} and {name_b} discussing the topic.
+You are writing a conversational podcast dialogue between TWO hosts: {name_a} and {name_b}.
 
 Prompt: {req.prompt}
 Domain: {detected_domain}
 
-Analysis Summary:\n{analysis_text[:6000]}\n---
+Analysis Summary:
+{analysis_text[:12000]}
+---
 
-Task: Create a natural, engaging dialogue between Host A and Host B where:
-- {name_a} introduces topics and asks questions
-- {name_b} provides insights and explanations
-- They build on each other's points naturally
-- Reference Section numbers casually when discussing findings
-- Keep exchanges brief (2-3 sentences per turn)
-- Create 8-12 total exchanges
-- End with both hosts summarizing key takeaways
+Task: Create a natural, engaging, IN-DEPTH dialogue strictly between the two hosts named above.
 
-CRITICAL FORMATTING RULES:
-1. EVERY line must start with EXACTLY "Host A: " or "Host B: " (including the space after colon)
-2. Do NOT use markdown formatting like **Host A:** or *Host B:*
-3. Do NOT include any lines without speaker tags (no titles, headers, or narrative descriptions)
-4. Do NOT use quotation marks around dialogue
-5. Start immediately with dialogue - no introduction or preamble
+TARGET LENGTH: 3-4 MINUTES OF SPOKEN AUDIO (approximately 500-650 words total, 25-35 speaker turns).
+
+The conversation should:
+- Have {name_a} introduce the topic warmly and guide the discussion with thoughtful questions
+- Have {name_b} provide detailed insights, explanations, and examples
+- Build on each other's points naturally with follow-up questions and elaborations
+- Reference Section numbers casually when discussing findings (e.g., "As we saw in Section 2...")
+- Include an engaging introduction, thorough exploration of 3-4 key points, and a memorable conclusion
+- Each speaker turn should be 2-4 sentences (15-25 words per turn on average)
+- Produce between 25 and 35 total speaker turns (lines)
+- Include smooth transitions between topics
+- End with both hosts summarizing 2-3 key takeaways and a friendly sign-off
+
+STRUCTURE GUIDE:
+1. Opening (3-4 turns): {name_a} welcomes listeners and introduces the topic; {name_b} shares initial excitement
+2. Main Discussion (18-25 turns): Deep dive into 3-4 key insights from the analysis, with questions, examples, and elaboration
+3. Closing (4-6 turns): Recap key takeaways, share final thoughts, thank listeners
+
+CRITICAL FORMATTING RULES (MUST FOLLOW EXACTLY):
+1. EVERY line must start with EXACTLY "{name_a}: " or "{name_b}: " (including the trailing space). Use these exact names only.
+2. Use NO other speaker names, narrative lines, titles, headers, or descriptions — only dialogue lines prefixed with the two host names.
+3. Both {name_a} and {name_b} must appear at least once in the output.
+4. The first line MUST start with "{name_a}:"
+5. Produce 25-35 total lines (each line is a single speaker turn). Do NOT produce fewer.
+6. Do NOT use markdown, bold, italics, or quotation marks. Do NOT annotate with parentheses or stage directions.
+7. Start immediately with dialogue — no preamble, no explanation.
+8. If you cannot follow these rules exactly, output the single token: [FORMAT_ERROR]
 
 CORRECT FORMAT EXAMPLE:
-{name_a}: Welcome! Today we're exploring machine learning fundamentals. What caught your attention first in the analysis?
-{name_b}: Section 2 really stood out because it shows how neural networks process data in layers, which is fundamental to understanding deep learning.
-{name_a}: That's fascinating. How does that connect to what we saw in Section 4 about gradient descent?
-{name_b}: Great question! The gradient descent algorithm is what actually trains those neural network layers we discussed.
-
-INCORRECT FORMAT (DO NOT DO THIS):
-Title: Machine Learning Fundamentals
-**{name_a}:** Welcome...
-({name_a} introduces the topic)
-"Welcome to the show..."
-
-ONLY use information from the provided analysis. Do NOT add fabricated details.
-Start your response with the first line of dialogue immediately. In the podcast script generate with the names given in the prompt ONLY.
+{name_a}: Welcome back to the show! Today we're diving into a fascinating topic that's been on everyone's mind lately. I'm really excited to explore this with you.
+{name_b}: Absolutely! When I first looked at the analysis, Section 2 immediately caught my attention because it reveals some surprising patterns we don't usually consider.
+{name_a}: That's interesting. Can you break down what makes those patterns so unexpected?
+{name_b}: Sure! Essentially, the data shows that the conventional approach we've been using actually misses about 40 percent of the key factors. Section 3 elaborates on this with concrete examples.
 """
 
-        script_cache_key = f"SCRIPT:{req.prompt}"  # semantic intent key for script
+        # Version tag invalidates old cached short scripts when prompt template changes
+        SCRIPT_PROMPT_VERSION = "v2_long_3to4min"
+        script_cache_key = f"SCRIPT:{SCRIPT_PROMPT_VERSION}:{req.prompt}"  # semantic intent key for script
         script_cache_context = {
             "type": "podcast_script",
             "project": safe_project,
             "model": req.gemini_model,
-            "analysis_hash": hash_bytes(analysis_text.encode('utf-8'))
+            "analysis_hash": hash_bytes(analysis_text.encode('utf-8')),
+            "prompt_version": SCRIPT_PROMPT_VERSION
         }
         cached_script = await asyncio.to_thread(prompt_cache.get, script_cache_key, script_cache_context)
         if cached_script and not req.regenerate:
@@ -1753,8 +1763,22 @@ Start your response with the first line of dialogue immediately. In the podcast 
                     "insight_id": insight_id
                 }, indent=2))
             (insight_dir/"script.txt").write_text(script_text, encoding='utf-8')
+            try:
+                # Save Gemini analysis output and the strict two-person script separately
+                (insight_dir/"gemini_analysis.txt").write_text(analysis_text or "", encoding='utf-8')
+                (insight_dir/"two_person_script.txt").write_text(script_text or "", encoding='utf-8')
+            except Exception as save_txt_err:
+                print(f"⚠️ Failed to write additional text files for podcast insight {insight_id}: {save_txt_err}")
         except Exception as persist_err:
             print(f"⚠️ Failed to persist podcast insight {insight_id}: {persist_err}")
+
+        # Print the generated script to console for debugging and review
+        try:
+            print("----- PODCAST SCRIPT START -----")
+            print(script_text)
+            print("----- PODCAST SCRIPT END -----")
+        except Exception as _:
+            pass
 
         # TTS synthesis with TWO VOICES best-effort
         audio_url = None
@@ -1783,8 +1807,21 @@ Start your response with the first line of dialogue immediately. In the podcast 
                     audio_url = f"/insight-audio/{safe_project}/{insight_id}.mp3"
                     print(f"✅ Two-speaker podcast audio generated: {len(audio_bytes)} bytes")
                 elif result.reason == speechsdk.ResultReason.Canceled:
-                    cancellation = speechsdk.CancellationDetails(result)
-                    print(f"❌ TTS Canceled: {cancellation.reason}. Error details: {cancellation.error_details}")
+                    try:
+                        # CancellationDetails can sometimes raise when the underlying SDK
+                        # returns an unexpected/invalid handle. Be defensive here.
+                        cancellation = speechsdk.CancellationDetails(result)
+                        reason = getattr(cancellation, 'reason', 'Unknown')
+                        details = getattr(cancellation, 'error_details', None)
+                        print(f"❌ TTS Canceled: {reason}. Error details: {details}")
+                    except Exception as cd_exc:
+                        # Fall back to best-effort logging without raising further
+                        try:
+                            # Some result objects expose an error_details attribute directly
+                            details = getattr(result, 'error_details', None)
+                        except Exception:
+                            details = None
+                        print(f"❌ TTS Canceled but CancellationDetails failed: {cd_exc}. Fallback details: {details}")
                 else:
                     print(f"⚠️ TTS did not complete for podcast flow, reason: {result.reason}")
             else:

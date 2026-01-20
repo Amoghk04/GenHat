@@ -397,10 +397,6 @@ function generateMindmapHTML(treeData: MindmapNode, title: string): string {
           React.createElement('div', { className: 'node-content' },
             React.createElement('span', { className: 'node-label', onDoubleClick: handleDoubleClick }, labelText)
           ),
-          React.createElement('div', { className: 'node-actions' },
-            React.createElement('button', { className: 'action-btn', onClick: handleAddChild, title: 'Add child' }, '+'),
-            !data.isRoot && React.createElement('button', { className: 'action-btn', onClick: handleDelete, title: 'Delete' }, '×')
-          ),
           data.hasChildren && React.createElement('button', { className: 'collapse-indicator', type: 'button', onClick: handleToggleCollapse, title: data.collapsed ? 'Expand' : 'Collapse' }, data.collapsed ? '+' : '−'),
           React.createElement(Handle, { type: 'source', position: Position.Right, id: 'source' })
         );
@@ -622,3 +618,13 @@ function generateMindmapHTML(treeData: MindmapNode, title: string): string {
 </body>
 </html>`
 }
+
+
+
+// add node functionality //
+/*
+React.createElement('div', { className: 'node-actions' },
+            React.createElement('button', { className: 'action-btn', onClick: handleAddChild, title: 'Add child' }, '+'),
+            !data.isRoot && React.createElement('button', { className: 'action-btn', onClick: handleDelete, title: 'Delete' }, '×')
+          ),
+*/
